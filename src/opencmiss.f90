@@ -3035,11 +3035,23 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSEquationsSet_SpecificationGetObj
   END INTERFACE !CMISSEquationsSet_SpecificationGet
 
-   !>Sets/changes the equations set specification i.e., equations set class, type and subtype for an equations set.
+  !>Sets/changes the equations set specification i.e., equations set class, type and subtype for an equations set.
   INTERFACE CMISSEquationsSet_SpecificationSet
     MODULE PROCEDURE CMISSEquationsSet_SpecificationSetNumber
     MODULE PROCEDURE CMISSEquationsSet_SpecificationSetObj
   END INTERFACE !CMISSEquationsSet_SpecificationSet
+
+  !>Calculates the strain field for the equations set.
+  INTERFACE CMISSEquationsSet_StrainCalculate
+    MODULE PROCEDURE CMISSEquationsSet_StrainCalculateNumber
+    MODULE PROCEDURE CMISSEquationsSet_StrainCalculateObj
+  END INTERFACE !CMISSEquationsSet_StrainCalculate
+
+  !>Calculates the stress and strain fields for the equations set.
+  INTERFACE CMISSEquationsSet_StressCalculate
+    MODULE PROCEDURE CMISSEquationsSet_StressCalculateNumber
+    MODULE PROCEDURE CMISSEquationsSet_StressCalculateObj
+  END INTERFACE !CMISSEquationsSet_StressCalculate
 
   !>Gets the equations set analytic user parameter
   INTERFACE CMISSEquationsSet_AnalyticUserParamGet
@@ -3088,6 +3100,8 @@ MODULE OPENCMISS
   PUBLIC CMISSEquationsSet_SourceDestroy
 
   PUBLIC CMISSEquationsSet_SpecificationGet,CMISSEquationsSet_SpecificationSet
+
+  PUBLIC CMISSEquationsSet_StrainCalculate,CMISSEquationsSet_StressCalculate
 
   PUBLIC CMISSEquationsSet_AnalyticUserParamSet,CMISSEquationsSet_AnalyticUserParamGet
 
@@ -25103,6 +25117,180 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSEquationsSet_SpecificationSetObj
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the strain field for the equations set
+  SUBROUTINE CMISSEquationsSet_StrainCalculateNumber(EquationsSetUserNumber,RegionUserNumber, &
+      & StrainFieldUserNumber,StrainFieldVariableType,Err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: EquationsSetUserNumber !<The user number of the equations set to calculate the strain for.
+    INTEGER(INTG), INTENT(IN) :: RegionUserNumber !<The user number of the region containing the field to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: StrainFieldUserNumber !<The user number of the field to store the strain field in.
+    INTEGER(INTG), INTENT(IN) :: StrainFieldVariableType !<The field variable type to store the strain in.
+    INTEGER(INTG), INTENT(OUT) :: Err !<The error code.
+    !Local variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
+    TYPE(FIELD_TYPE), POINTER :: strainField
+    TYPE(REGION_TYPE), POINTER :: region
+    TYPE(VARYING_STRING) :: localError
+
+    CALL ENTERS("CMISSEquationsSet_StrainCalculateNumber",Err,ERROR,*999)
+
+    NULLIFY(equationsSet)
+    NULLIFY(strainField)
+    NULLIFY(region)
+
+    CALL REGION_USER_NUMBER_FIND(RegionUserNumber,region,Err,ERROR,*999)
+    IF(ASSOCIATED(region)) THEN
+      CALL EQUATIONS_SET_USER_NUMBER_FIND(EquationsSetUserNumber,region,equationsSet,Err,ERROR,*999)
+      IF(ASSOCIATED(equationsSet)) THEN
+        CALL FIELD_USER_NUMBER_FIND(StrainFieldUserNumber,region,strainField,Err,ERROR,*999)
+        IF(ASSOCIATED(strainField)) THEN
+          CALL EquationsSet_StrainCalculate(equationsSet,strainField,StrainFieldVariableType,Err,ERROR,*999)
+        ELSE
+          localError="A field with a user number of "//TRIM(NUMBER_TO_VSTRING(StrainFieldUserNumber,"*",Err,ERROR))// &
+            & " does not exist on region number "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//"."
+          CALL FLAG_ERROR(localError,Err,ERROR,*999)
+        ENDIF
+      ELSE
+        localError="An equations set with a user number of "//TRIM(NUMBER_TO_VSTRING(EquationsSetUserNumber,"*", &
+          & Err,ERROR))//" does not exist on region number "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//"."
+        CALL FLAG_ERROR(localError,Err,ERROR,*999)
+      ENDIF
+    ELSE
+      localError="A region with an user number of "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//" does not exist."
+      CALL FLAG_ERROR(localError,Err,ERROR,*999)
+    ENDIF
+
+    CALL EXITS("CMISSEquationsSet_StrainCalculateNumber")
+    RETURN
+999 CALL ERRORS("CMISSEquationsSet_StrainCalculateNumber",Err,ERROR)
+    CALL EXITS("CMISSEquationsSet_StrainCalculateNumber")
+    CALL CMISS_HANDLE_ERROR(Err,ERROR)
+  END SUBROUTINE CMISSEquationsSet_StrainCalculateNumber
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the strain field for the equations set
+  SUBROUTINE CMISSEquationsSet_StrainCalculateObj(EquationsSet,StrainField,StrainFieldVariableType,Err)
+
+    !Argument variables
+    TYPE(CMISSEquationsSetType), INTENT(INOUT) :: EquationsSet !<The equations set to calculate the strain for.
+    TYPE(CMISSFieldType), INTENT(INOUT) :: StrainField !<The field to store the strain field in.
+    INTEGER(INTG), INTENT(IN) :: StrainFieldVariableType !<The field variable type to store the strain in.
+    INTEGER(INTG), INTENT(OUT) :: Err !<The error code.
+
+    CALL ENTERS("CMISSEquationsSet_StrainCalculateObj",Err,ERROR,*999)
+
+    CALL EquationsSet_StrainCalculate(EquationsSet%EQUATIONS_SET,StrainField%FIELD,StrainFieldVariableType,Err,ERROR,*999)
+
+    CALL EXITS("CMISSEquationsSet_StrainCalculateObj")
+    RETURN
+999 CALL ERRORS("CMISSEquationsSet_StrainCalculateObj",Err,ERROR)
+    CALL EXITS("CMISSEquationsSet_StrainCalculateObj")
+    CALL CMISS_HANDLE_ERROR(Err,ERROR)
+  END SUBROUTINE CMISSEquationsSet_StrainCalculateObj
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the stress and strain field for the equations set
+  SUBROUTINE CMISSEquationsSet_StressCalculateNumber(EquationsSetUserNumber,RegionUserNumber,StrainFieldUserNumber, &
+      & StrainFieldVariableType,StressFieldUserNumber,StressFieldVariableType,Err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: EquationsSetUserNumber !<The user number of the equations set to calculate the strain for.
+    INTEGER(INTG), INTENT(IN) :: RegionUserNumber !<The user number of the region containing both the stress and strain field.
+    INTEGER(INTG), INTENT(IN) :: StrainFieldUserNumber !<The user number of the field to store the strain field in.
+    INTEGER(INTG), INTENT(IN) :: StrainFieldVariableType !<The field variable type to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: StressFieldUserNumber !<The user number of the field to store the stress field in.
+    INTEGER(INTG), INTENT(IN) :: StressFieldVariableType !<The field variable type to store the stress in.
+    INTEGER(INTG), INTENT(OUT) :: Err !<The error code.
+    !Local variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER :: equationsSet
+    TYPE(FIELD_TYPE), POINTER :: strainField
+    TYPE(FIELD_TYPE), POINTER :: stressField
+    TYPE(REGION_TYPE), POINTER :: region
+    TYPE(VARYING_STRING) :: localError
+
+    CALL ENTERS("CMISSEquationsSet_StressCalculateNumber",Err,ERROR,*999)
+
+    NULLIFY(equationsSet)
+    NULLIFY(strainField)
+    NULLIFY(stressField)
+    NULLIFY(region)
+
+    CALL REGION_USER_NUMBER_FIND(RegionUserNumber,region,Err,ERROR,*999)
+    IF(ASSOCIATED(region)) THEN
+      CALL EQUATIONS_SET_USER_NUMBER_FIND(EquationsSetUserNumber,region,equationsSet,Err,ERROR,*999)
+      IF(ASSOCIATED(equationsSet)) THEN
+        CALL FIELD_USER_NUMBER_FIND(StrainFieldUserNumber,region,strainField,Err,ERROR,*999)
+        IF(ASSOCIATED(strainField)) THEN
+          CALL FIELD_USER_NUMBER_FIND(StressFieldUserNumber,region,stressField,Err,ERROR,*999)
+          IF(ASSOCIATED(stressField)) THEN
+            CALL EquationsSet_StressCalculate(equationsSet,strainField,StrainFieldVariableType, &
+              & stressField,StressFieldVariableType,Err,ERROR,*999)
+          ELSE
+            localError="A field with a user number of "//TRIM(NUMBER_TO_VSTRING(StressFieldUserNumber,"*",Err,ERROR))// &
+              & " does not exist on region number "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//"."
+            CALL FLAG_ERROR(localError,Err,ERROR,*999)
+          ENDIF
+        ELSE
+          localError="A field with a user number of "//TRIM(NUMBER_TO_VSTRING(StrainFieldUserNumber,"*",Err,ERROR))// &
+            & " does not exist on region number "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//"."
+          CALL FLAG_ERROR(localError,Err,ERROR,*999)
+        ENDIF
+      ELSE
+        localError="An equations set with a user number of "//TRIM(NUMBER_TO_VSTRING(EquationsSetUserNumber,"*", &
+          & Err,ERROR))//" does not exist on region number "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//"."
+        CALL FLAG_ERROR(localError,Err,ERROR,*999)
+      ENDIF
+    ELSE
+      localError="A region with an user number of "//TRIM(NUMBER_TO_VSTRING(RegionUserNumber,"*",Err,ERROR))//" does not exist."
+      CALL FLAG_ERROR(localError,Err,ERROR,*999)
+    ENDIF
+
+    CALL EXITS("CMISSEquationsSet_StressCalculateNumber")
+    RETURN
+999 CALL ERRORS("CMISSEquationsSet_StressCalculateNumber",Err,ERROR)
+    CALL EXITS("CMISSEquationsSet_StressCalculateNumber")
+    CALL CMISS_HANDLE_ERROR(Err,ERROR)
+  END SUBROUTINE CMISSEquationsSet_StressCalculateNumber
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the stress and strain field for the equations set
+  SUBROUTINE CMISSEquationsSet_StressCalculateObj(EquationsSet,StrainField,StrainFieldVariableType,StressField, &
+      & StressFieldVariableType,Err)
+
+    !Argument variables
+    TYPE(CMISSEquationsSetType), INTENT(INOUT) :: EquationsSet !<The equations set to calculate the strain for.
+    TYPE(CMISSFieldType), INTENT(INOUT) :: StrainField !<The field to store the strain field in.
+    INTEGER(INTG), INTENT(IN) :: StrainFieldVariableType !<The field variable type to store the strain in.
+    TYPE(CMISSFieldType), INTENT(INOUT) :: StressField !<The field to store the stress field in.
+    INTEGER(INTG), INTENT(IN) :: StressFieldVariableType !<The field variable type to store the stress in.
+    INTEGER(INTG), INTENT(OUT) :: Err !<The error code.
+
+    CALL ENTERS("CMISSEquationsSet_StressCalculateObj",Err,ERROR,*999)
+
+    CALL EquationsSet_StressCalculate(EquationsSet%EQUATIONS_SET,StrainField%FIELD,StrainFieldVariableType, &
+      & StressField%FIELD,StressFieldVariableType,Err,ERROR,*999)
+
+    CALL EXITS("CMISSEquationsSet_StressCalculateObj")
+    RETURN
+999 CALL ERRORS("CMISSEquationsSet_StressCalculateObj",Err,ERROR)
+    CALL EXITS("CMISSEquationsSet_StressCalculateObj")
+    CALL CMISS_HANDLE_ERROR(Err,ERROR)
+  END SUBROUTINE CMISSEquationsSet_StressCalculateObj
 
 !!==================================================================================================================================
 !!

@@ -80,6 +80,10 @@ MODULE ELASTICITY_ROUTINES
 
   PUBLIC ELASTICITY_EQUATIONS_SET_SOLUTION_METHOD_SET
 
+  PUBLIC ElasticityEquationsSet_StrainCalculate
+
+  PUBLIC ElasticityEquationsSet_StressCalculate
+
   PUBLIC ELASTICITY_EQUATIONS_SET_BOUNDARY_CONDITIONS_ANALYTIC
   
   PUBLIC ELASTICITY_PROBLEM_CLASS_TYPE_SET
@@ -256,44 +260,6 @@ CONTAINS
   !================================================================================================================================
   !
 
-  !>Evaluates the strain field for an elasticity class finite element equation set.
-  SUBROUTINE ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE(EQUATIONS_SET,ERR,ERROR,*)
-
-    !Argument variables
-    TYPE(EQUATIONS_SET_TYPE), POINTER :: EQUATIONS_SET !<A pointer to the equations set
-    INTEGER(INTG), INTENT(OUT) :: ERR !<The error code
-    TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
-    !Local Variables
-    TYPE(VARYING_STRING) :: LOCAL_ERROR
-
-    CALL ENTERS("ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE",ERR,ERROR,*999)
-
-    IF(ASSOCIATED(EQUATIONS_SET)) THEN
-      SELECT CASE(EQUATIONS_SET%TYPE)
-      CASE(EQUATIONS_SET_LINEAR_ELASTICITY_TYPE)
-        CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
-      CASE(EQUATIONS_SET_FINITE_ELASTICITY_TYPE)
-        CALL FINITE_ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE(EQUATIONS_SET,ERR,ERROR,*999)
-      CASE DEFAULT
-        LOCAL_ERROR="Equations set type "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET%TYPE,"*",ERR,ERROR))// &
-          & " is not valid for an elasticity equation set class."
-        CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-      END SELECT
-    ELSE
-      CALL FLAG_ERROR("Equations set is not associated",ERR,ERROR,*999)
-    ENDIF
-       
-    CALL EXITS("ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE")
-    RETURN
-999 CALL ERRORS("ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE",ERR,ERROR)
-    CALL EXITS("ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE")
-    RETURN 1
-  END SUBROUTINE ELASTICITY_FINITE_ELEMENT_STRAIN_CALCULATE
-
-  !
-  !================================================================================================================================
-  !
-
   !>Pre-evaluates the residual for an elasticity class finite element equation set.
   SUBROUTINE ELASTICITY_FINITE_ELEMENT_PRE_RESIDUAL_EVALUATE(EQUATIONS_SET,ERR,ERROR,*)
 
@@ -443,6 +409,92 @@ CONTAINS
     CALL EXITS("ELASTICITY_EQUATIONS_SET_SOLUTION_METHOD_SET")
     RETURN 1
   END SUBROUTINE ELASTICITY_EQUATIONS_SET_SOLUTION_METHOD_SET
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the strain field for the elasticity equations set. \see OPENCMISS::CMISSEquationsSet_StrainCalculate
+  SUBROUTINE ElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*)
+
+    !Argument variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+
+    CALL ENTERS("ElasticityEquationsSet_StrainCalculate",err,error,*999)
+
+    IF(ASSOCIATED(equationsSet)) THEN
+      IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
+        CALL FLAG_ERROR("Equations set has not been finished.",err,error,*999)
+      ELSE
+        SELECT CASE(equationsSet%TYPE)
+        CASE(EQUATIONS_SET_LINEAR_ELASTICITY_TYPE)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_FINITE_ELASTICITY_TYPE)
+          CALL FiniteElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*999)
+        CASE DEFAULT
+          CALL FLAG_ERROR("Equations set equation type of "//TRIM(NUMBER_TO_VSTRING(equationsSet%TYPE,"*",err,error))// &
+            & " is not valid for an elasticity equations set class.",err,error,*999)
+        END SELECT
+      ENDIF
+    ELSE
+      CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
+    ENDIF
+
+    CALL EXITS("ElasticityEquationsSet_StrainCalculate")
+    RETURN
+999 CALL ERRORS("ElasticityEquationsSet_StrainCalculate",err,error)
+    CALL EXITS("ElasticityEquationsSet_StrainCalculate")
+    RETURN 1
+  END SUBROUTINE ElasticityEquationsSet_StrainCalculate
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the stress field for the elasticity equations set. \see OPENCMISS::CMISSEquationsSet_StressCalculate
+  SUBROUTINE ElasticityEquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
+      & stressField,stressFieldVariableType,err,error,*)
+
+    !Argument variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate stress for
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: stressField !<The field to store the stress in.
+    INTEGER(INTG), INTENT(IN) :: stressFieldVariableType !<The field variable type of the stress field to store the stress in.
+    INTEGER(INTG), INTENT(OUT) :: err !<On return, the error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<On return, the error string
+
+    CALL ENTERS("ElasticityEquationsSet_StressCalculate",err,error,*999)
+
+    IF(ASSOCIATED(equationsSet)) THEN
+      IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
+        CALL FLAG_ERROR("Equations set has not been finished.",err,error,*999)
+      ELSE
+        SELECT CASE(equationsSet%TYPE)
+        CASE(EQUATIONS_SET_LINEAR_ELASTICITY_TYPE)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_FINITE_ELASTICITY_TYPE)
+          CALL FiniteElasticityEquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
+            & stressField,stressFieldVariableType,err,error,*999)
+        CASE DEFAULT
+          CALL FLAG_ERROR("Equations set equation type of "//TRIM(NUMBER_TO_VSTRING(equationsSet%TYPE,"*",ERR,ERROR))// &
+            & " is not valid for an elasticity equations set class.",err,error,*999)
+        END SELECT
+      ENDIF
+    ELSE
+      CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
+    ENDIF
+
+    CALL EXITS("ElasticityEquationsSet_StressCalculate")
+    RETURN
+999 CALL ERRORS("ElasticityEquationsSet_StressCalculate",err,error)
+    CALL EXITS("ElasticityEquationsSet_StressCalculate")
+    RETURN 1
+  END SUBROUTINE ElasticityEquationsSet_StressCalculate
 
   !
   !================================================================================================================================

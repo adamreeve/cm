@@ -131,9 +131,11 @@ MODULE EQUATIONS_SET_ROUTINES
   PUBLIC EQUATIONS_SET_SOURCE_CREATE_START,EQUATIONS_SET_SOURCE_CREATE_FINISH
 
   PUBLIC EQUATIONS_SET_SOURCE_DESTROY
-  
+
   PUBLIC EQUATIONS_SET_SPECIFICATION_GET,EQUATIONS_SET_SPECIFICATION_SET
   
+  PUBLIC EquationsSet_StrainCalculate,EquationsSet_StressCalculate
+
   PUBLIC EQUATIONS_SET_USER_NUMBER_FIND
   
   PUBLIC EQUATIONS_SET_LOAD_INCREMENT_APPLY
@@ -5824,7 +5826,117 @@ CONTAINS
     CALL EXITS("EQUATIONS_SET_SPECIFICATION_GET")
     RETURN 1
   END SUBROUTINE EQUATIONS_SET_SPECIFICATION_GET
-  
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the strain field for the equations set. \see OPENCMISS::CMISSEquationsSet_StrainCalculate
+  SUBROUTINE EquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*)
+
+    !Argument variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+
+    CALL ENTERS("EquationsSet_StrainCalculate",err,error,*999)
+
+    IF(ASSOCIATED(equationsSet)) THEN
+      IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
+        CALL FLAG_ERROR("Equations set has not been finished.",err,error,*999)
+      ELSE
+        SELECT CASE(equationsSet%CLASS)
+        CASE(EQUATIONS_SET_ELASTICITY_CLASS)
+          CALL ElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*999)
+        CASE(EQUATIONS_SET_FLUID_MECHANICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_ELECTROMAGNETICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_CLASSICAL_FIELD_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_FITTING_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_BIOELECTRICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_MODAL_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_MULTI_PHYSICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE DEFAULT
+          CALL FLAG_ERROR("Equations set class "//TRIM(NUMBER_TO_VSTRING(equationsSet%CLASS,"*",ERR,ERROR))// &
+            & " is not valid.",ERR,ERROR,*999)
+        END SELECT
+      ENDIF
+    ELSE
+      CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
+    ENDIF
+
+    CALL EXITS("EquationsSet_StrainCalculate")
+    RETURN
+999 CALL ERRORS("EquationsSet_StrainCalculate",err,error)
+    CALL EXITS("EquationsSet_StrainCalculate")
+    RETURN 1
+  END SUBROUTINE EquationsSet_StrainCalculate
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the stress field for the equations set. \see OPENCMISS::CMISSEquationsSet_StressCalculate
+  SUBROUTINE EquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
+      & stressField,stressFieldVariableType,err,error,*)
+
+    !Argument variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate stress for
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: stressField !<The field to store the stress in.
+    INTEGER(INTG), INTENT(IN) :: stressFieldVariableType !<The field variable type of the stress field to store the stress in.
+    INTEGER(INTG), INTENT(OUT) :: err !<On return, the error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<On return, the error string
+
+    CALL ENTERS("EquationsSet_StressCalculate",err,error,*999)
+
+    IF(ASSOCIATED(equationsSet)) THEN
+      IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
+        CALL FLAG_ERROR("Equations set has not been finished.",err,error,*999)
+      ELSE
+        SELECT CASE(equationsSet%CLASS)
+        CASE(EQUATIONS_SET_ELASTICITY_CLASS)
+          CALL ElasticityEquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
+            & stressField,stressFieldVariableType,err,error,*999)
+        CASE(EQUATIONS_SET_FLUID_MECHANICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_ELECTROMAGNETICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_CLASSICAL_FIELD_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_FITTING_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_BIOELECTRICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_MODAL_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE(EQUATIONS_SET_MULTI_PHYSICS_CLASS)
+          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
+        CASE DEFAULT
+          CALL FLAG_ERROR("Equations set class "//TRIM(NUMBER_TO_VSTRING(equationsSet%CLASS,"*",ERR,ERROR))// &
+            & " is not valid.",ERR,ERROR,*999)
+        END SELECT
+      ENDIF
+    ELSE
+      CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
+    ENDIF
+
+    CALL EXITS("EquationsSet_StressCalculate")
+    RETURN
+999 CALL ERRORS("EquationsSet_StressCalculate",err,error)
+    CALL EXITS("EquationsSet_StressCalculate")
+    RETURN 1
+  END SUBROUTINE EquationsSet_StressCalculate
+
   !
   !================================================================================================================================
   !
