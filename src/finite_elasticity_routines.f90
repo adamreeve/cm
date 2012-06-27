@@ -117,7 +117,7 @@ MODULE FINITE_ELASTICITY_ROUTINES
     & FINITE_ELASTICITY_GAUSS_DEFORMATION_GRADIENT_TENSOR,FINITE_ELASTICITY_LOAD_INCREMENT_APPLY, &
     & FINITE_ELASTICITY_FINITE_ELEMENT_PRE_RESIDUAL_EVALUATE,FINITE_ELASTICITY_FINITE_ELEMENT_POST_RESIDUAL_EVALUATE
 
-  PUBLIC FiniteElasticityEquationsSet_StrainCalculate,FiniteElasticityEquationsSet_StressCalculate
+  PUBLIC FiniteElasticityEquationsSet_DerivedVariableCalculate
 
 CONTAINS
 
@@ -1468,7 +1468,7 @@ CONTAINS
       SELECT CASE(EQUATIONS_SET%SUBTYPE)
       CASE(EQUATIONS_SET_CONSTITUTIVE_LAW_IN_CELLML_EVALUATE_SUBTYPE)
         DEPENDENT_FIELD=>EQUATIONS_SET%EQUATIONS%INTERPOLATION%DEPENDENT_FIELD
-        CALL FiniteElasticityEquationsSet_StrainCalculate(EQUATIONS_SET,DEPENDENT_FIELD, &
+        CALL FiniteElasticity_StrainCalculate(EQUATIONS_SET,DEPENDENT_FIELD, &
           & FIELD_U1_VARIABLE_TYPE,ERR,ERROR,*999)
       CASE(EQUATIONS_SET_MEMBRANE_SUBTYPE,EQUATIONS_SET_MOONEY_RIVLIN_SUBTYPE,EQUATIONS_SET_ISOTROPIC_EXPONENTIAL_SUBTYPE, &
           & EQUATIONS_SET_TRANSVERSE_ISOTROPIC_EXPONENTIAL_SUBTYPE,&
@@ -1580,12 +1580,63 @@ CONTAINS
   !================================================================================================================================
   !
 
+  !>Calculated an output field for a finite elasticity equations set.
+  SUBROUTINE FiniteElasticityEquationsSet_DerivedVariableCalculate(equationsSet,derivedType,err,error,*)
+
+    !Argument variables
+    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate the output for
+    INTEGER(INTG), INTENT(IN) :: derivedType !<The derived field type to calculate. \see EQUATIONS_SET_CONSTANTS_DerivedTypes.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+
+    !Local variables
+    TYPE(FIELD_VARIABLE_TYPE), POINTER :: derivedVariable
+
+    CALL ENTERS("FiniteElasticityEquationsSet_DerivedVariableCalculate",err,error,*999)
+
+    NULLIFY(derivedVariable)
+
+    IF(ASSOCIATED(equationsSet)) THEN
+      IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
+        CALL FLAG_ERROR("Equations set has not been finished.",err,error,*999)
+      ELSE
+        IF(ASSOCIATED(equationsSet%equations)) THEN
+          CALL Equations_DerivedVariableGet(equationsSet%equations,derivedType,derivedVariable,err,error,*999)
+          SELECT CASE(derivedType)
+          CASE(EQUATIONS_SET_DERIVED_STRAIN)
+            CALL FiniteElasticity_StrainCalculate(equationsSet, &
+              & derivedVariable%field,derivedVariable%variable_type,err,error,*999)
+          CASE(EQUATIONS_SET_DERIVED_STRESS)
+            CALL FLAG_ERROR("Not implemented.",err,error,*999)
+          CASE DEFAULT
+            CALL FLAG_ERROR("Equations set derived field type of "//TRIM(NUMBER_TO_VSTRING(derivedType,"*",err,error))// &
+              & " is not valid for a finite elasticity equations set type.",err,error,*999)
+          END SELECT
+        ELSE
+          CALL FLAG_ERROR("Equations set equations are not associated.",err,error,*999)
+        END IF
+      END IF
+    ELSE
+      CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
+    END IF
+
+    CALL EXITS("FiniteElasticityEquationsSet_DerivedVariableCalculate")
+    RETURN
+999 CALL ERRORS("FiniteElasticityEquationsSet_DerivedVariableCalculate",err,error)
+    CALL EXITS("FiniteElasticityEquationsSet_DerivedVariableCalculate")
+    RETURN 1
+  END SUBROUTINE FiniteElasticityEquationsSet_DerivedVariableCalculate
+
+  !
+  !================================================================================================================================
+  !
+
   !>Calculated the strain field for a finite elasticity finite element equations set.
-  SUBROUTINE FiniteElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*)
+  SUBROUTINE FiniteElasticity_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*)
 
     TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
     TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
-    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
+    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the output field to store the strain in.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
     !Local Variables
@@ -1604,7 +1655,7 @@ CONTAINS
     INTEGER(INTG) :: element_idx,ne
     INTEGER(INTG) :: FIELD_VAR_TYPE
     INTEGER(INTG) :: DEPENDENT_NUMBER_OF_COMPONENTS
-    INTEGER(INTG) :: NUMBER_OF_DIMENSIONS,NUMBER_OF_XI,PRESSURE_COMPONENT
+    INTEGER(INTG) :: NUMBER_OF_DIMENSIONS,NUMBER_OF_XI
     INTEGER(INTG) :: DEPENDENT_NUMBER_OF_GAUSS_POINTS
     INTEGER(INTG) :: MESH_COMPONENT_NUMBER
     INTEGER(INTG) :: var1 ! Variable number corresponding to 'U' in single physics case
@@ -1615,7 +1666,7 @@ CONTAINS
       & USER_TIME5(1),SYSTEM_ELAPSED,SYSTEM_TIME2(1),SYSTEM_TIME3(1),SYSTEM_TIME4(1), &
       & SYSTEM_TIME5(1)
 
-    CALL ENTERS("FiniteElasticityEquationsSet_StrainCalculate",err,error,*999)
+    CALL ENTERS("FiniteElasticity_StrainCalculate",err,error,*999)
 
     NULLIFY(DEPENDENT_BASIS)
     NULLIFY(EQUATIONS)
@@ -1693,12 +1744,6 @@ CONTAINS
 
           NUMBER_OF_XI=DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%TOPOLOGY%ELEMENTS%ELEMENTS(ne)%BASIS%NUMBER_OF_XI
 
-          !Initialise tensors and matrices
-          DZDNU=0.0_DP
-          DO i=1,3 !NUMBER_OF_DIMENSIONS
-            DZDNU(i,i)=1.0_DP
-          ENDDO
-
           CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
             & GEOMETRIC_INTERPOLATION_PARAMETERS,ERR,ERROR,*999)
           CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
@@ -1732,18 +1777,11 @@ CONTAINS
             ENDIF
 
             !AZL = F'*F (deformed covariant or right cauchy deformation tensor, C)
-            !AZU - deformed contravariant tensor; I3 = det(C)
             !E = Green-Lagrange strain tensor = 0.5*(C-I)
-            !P is the actual hydrostatic pressure, not double it
 
             CALL MATRIX_TRANSPOSE(DZDNU,DZDNUT,ERR,ERROR,*999)
             CALL MATRIX_PRODUCT(DZDNUT,DZDNU,AZL,ERR,ERROR,*999)
 
-            PRESSURE_COMPONENT=DEPENDENT_INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD_VARIABLE%NUMBER_OF_COMPONENTS
-            P=DEPENDENT_INTERPOLATED_POINT%VALUES(PRESSURE_COMPONENT,1)
-
-            CALL INVERT(AZL,AZU,I3,ERR,ERROR,*999)
-            Jznu=I3**0.5_DP
             E = 0.5_DP*AZL 
             DO i=1,3 !NUMBER_OF_DIMENSIONS
               E(i,i)=E(i,i)-0.5_DP
@@ -1815,12 +1853,6 @@ CONTAINS
 
           NUMBER_OF_XI=DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%TOPOLOGY%ELEMENTS%ELEMENTS(ne)%BASIS%NUMBER_OF_XI
 
-          !Initialise tensors and matrices
-          DZDNU=0.0_DP
-          DO i=1,3 !NUMBER_OF_DIMENSIONS
-            DZDNU(i,i)=1.0_DP
-          ENDDO
-
           CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
             & GEOMETRIC_INTERPOLATION_PARAMETERS,ERR,ERROR,*999)
           CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
@@ -1854,18 +1886,11 @@ CONTAINS
             ENDIF
 
             !AZL = F'*F (deformed covariant or right cauchy deformation tensor, C)
-            !AZU - deformed contravariant tensor; I3 = det(C)
             !E = Green-Lagrange strain tensor = 0.5*(C-I)
-            !P is the actual hydrostatic pressure, not double it
 
             CALL MATRIX_TRANSPOSE(DZDNU,DZDNUT,ERR,ERROR,*999)
             CALL MATRIX_PRODUCT(DZDNUT,DZDNU,AZL,ERR,ERROR,*999)
 
-            PRESSURE_COMPONENT=DEPENDENT_INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD_VARIABLE%NUMBER_OF_COMPONENTS
-            P=DEPENDENT_INTERPOLATED_POINT%VALUES(PRESSURE_COMPONENT,1)
-
-            CALL INVERT(AZL,AZU,I3,ERR,ERROR,*999)
-            Jznu=I3**0.5_DP
             E = 0.5_DP*AZL 
             DO i=1,3 !NUMBER_OF_DIMENSIONS ???
               E(i,i)=E(i,i)-0.5_DP
@@ -1928,83 +1953,12 @@ CONTAINS
       CALL FLAG_ERROR("Equations set is not associated.",ERR,ERROR,*999)
     ENDIF
 
-    CALL EXITS("FiniteElasticityEquationsSet_StrainCalculate")
+    CALL EXITS("FiniteElasticity_StrainCalculate")
     RETURN
-999 CALL ERRORS("FiniteElasticityEquationsSet_StrainCalculate",err,error)
-    CALL EXITS("FiniteElasticityEquationsSet_StrainCalculate")
+999 CALL ERRORS("FiniteElasticity_StrainCalculate",err,error)
+    CALL EXITS("FiniteElasticity_StrainCalculate")
     RETURN 1
-  END SUBROUTINE FiniteElasticityEquationsSet_StrainCalculate
-
-  !
-  !================================================================================================================================
-  !
-
-  !>Calculated the stress field for a finite elasticity finite element equations set.
-  SUBROUTINE FiniteElasticityEquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
-      & stressField,stressFieldVariableType,err,error,*)
-
-    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
-    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
-    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
-    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: stressField !<The field to store the stress in.
-    INTEGER(INTG), INTENT(IN) :: stressFieldVariableType !<The field variable type of the stress field to store the stress in.
-    INTEGER(INTG), INTENT(OUT) :: err !<The error code
-    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
-    !Local Variables
-    TYPE(EQUATIONS_TYPE), POINTER :: equations
-    INTEGER(INTG) :: componentIdx, numberOfDimensions
-
-    CALL ENTERS("FiniteElasticityEquationsSet_StressCalculate",err,error,*999)
-
-    NULLIFY(equations)
-
-    IF(ASSOCIATED(equationsSet)) THEN
-      equations=>equationsSet%EQUATIONS
-      IF(ASSOCIATED(equations)) THEN
-        numberOfDimensions=equationsSet%REGION%COORDINATE_SYSTEM%NUMBER_OF_DIMENSIONS
-
-        !Check the provided stress field has appropriate components
-        IF(ASSOCIATED(stressField)) THEN
-          CALL FIELD_VARIABLE_TYPE_CHECK(strainField,strainFieldVariableType,err,error,*999)
-          SELECT CASE(numberOfDimensions)
-          CASE(3)
-            CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(stressField,strainFieldVariableType,6,err,error,*999)
-            DO componentIdx=1,6
-              CALL FIELD_COMPONENT_INTERPOLATION_CHECK(strainField,strainFieldVariableType,componentIdx, &
-                & FIELD_GAUSS_POINT_BASED_INTERPOLATION,ERR,ERROR,*999)
-            END DO
-          CASE(2)
-            CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(stressField,strainFieldVariableType,3,err,error,*999)
-            DO componentIdx=1,3
-              CALL FIELD_COMPONENT_INTERPOLATION_CHECK(strainField,strainFieldVariableType,componentIdx, &
-                & FIELD_GAUSS_POINT_BASED_INTERPOLATION,ERR,ERROR,*999)
-            END DO
-          CASE(1)
-            CALL FLAG_ERROR("1D stress calculation not implemented.",err,error,*999)
-          CASE DEFAULT
-            CALL FLAG_ERROR("Invalid dimension of "//TRIM(NUMBER_TO_VSTRING(numberOfDimensions,"*",ERR,ERROR))// &
-              & " for the equations set.",err,error,*999)
-          END SELECT
-        ELSE
-          CALL FLAG_ERROR("Stress field is not associated.",err,error,*999)
-        END IF
-
-        !Calculate the strain field, and let the strain routine do appropriate checks for this field
-        CALL FiniteElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*999)
-
-      ELSE
-        CALL FLAG_ERROR("Equations set equations is not associated.",ERR,ERROR,*999)
-      ENDIF
-    ELSE
-      CALL FLAG_ERROR("Equations set is not associated.",ERR,ERROR,*999)
-    ENDIF
-
-    CALL EXITS("FiniteElasticityEquationsSet_StressCalculate")
-    RETURN
-999 CALL ERRORS("FiniteElasticityEquationsSet_StressCalculate",err,error)
-    CALL EXITS("FiniteElasticityEquationsSet_StressCalculate")
-    RETURN 1
-  END SUBROUTINE FiniteElasticityEquationsSet_StressCalculate
+  END SUBROUTINE FiniteElasticity_StrainCalculate
 
   !
   !================================================================================================================================
@@ -3160,7 +3114,7 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: GEOMETRIC_MESH_COMPONENT,GEOMETRIC_SCALING_TYPE,NUMBER_OF_COMPONENTS, &
       & NUMBER_OF_DIMENSIONS, NUMBER_OF_DARCY_COMPONENTS,GEOMETRIC_COMPONENT_NUMBER,NUMBER_OF_COMPONENTS_2,component_idx, &
-      & NUMBER_OF_FLUID_COMPONENTS
+      & derivedIdx,varIdx,variableType,NUMBER_OF_FLUID_COMPONENTS
     TYPE(DECOMPOSITION_TYPE), POINTER :: GEOMETRIC_DECOMPOSITION
     TYPE(FIELD_TYPE), POINTER :: ANALYTIC_FIELD,DEPENDENT_FIELD,GEOMETRIC_FIELD
     TYPE(EQUATIONS_TYPE), POINTER :: EQUATIONS
@@ -5338,6 +5292,104 @@ CONTAINS
               & " is invalid for a finite elasticity equation."
             CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
           END SELECT
+        CASE(EQUATIONS_SET_SETUP_DERIVED_TYPE)
+          ! We want to be able to set which derived variables are calculated before finishing the derived
+          ! field, so don't create field variables or check the provided field until the finish action.
+          SELECT CASE(EQUATIONS_SET_SETUP%ACTION_TYPE)
+          CASE(EQUATIONS_SET_SETUP_START_ACTION)
+            IF(EQUATIONS_SET%derived%derivedFieldAutoCreated) THEN
+              CALL FIELD_CREATE_START(EQUATIONS_SET_SETUP%FIELD_USER_NUMBER,EQUATIONS_SET%REGION,EQUATIONS_SET%derived% &
+                & derivedField,ERR,ERROR,*999)
+              CALL FIELD_TYPE_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,FIELD_GENERAL_TYPE,ERR,ERROR,*999)
+              CALL FIELD_LABEL_SET(EQUATIONS_SET%derived%derivedField,"Derived Field",ERR,ERROR,*999)
+              CALL FIELD_DEPENDENT_TYPE_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,FIELD_DEPENDENT_TYPE, &
+                & ERR,ERROR,*999)
+              CALL FIELD_MESH_DECOMPOSITION_GET(EQUATIONS_SET%GEOMETRY%GEOMETRIC_FIELD,GEOMETRIC_DECOMPOSITION,ERR,ERROR,*999)
+              CALL FIELD_MESH_DECOMPOSITION_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,GEOMETRIC_DECOMPOSITION, &
+                & ERR,ERROR,*999)
+              CALL FIELD_GEOMETRIC_FIELD_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,EQUATIONS_SET%GEOMETRY% &
+                & GEOMETRIC_FIELD,ERR,ERROR,*999)
+            END IF
+          CASE(EQUATIONS_SET_SETUP_FINISH_ACTION)
+            IF(ASSOCIATED(EQUATIONS_SET%derived)) THEN
+              ALLOCATE(VARIABLE_TYPES(EQUATIONS_SET%derived%numberOfVariables),STAT=ERR)
+              IF(ERR/=0) CALL FLAG_ERROR("Could not allocate derived field variable types.",ERR,ERROR,*999)
+              varIdx=0
+              DO derivedIdx=1,EQUATIONS_SET_NUMBER_OF_DERIVED_TYPES
+                IF(EQUATIONS_SET%derived%variableTypes(derivedIdx)/=0) THEN
+                  varIdx=varIdx+1
+                  VARIABLE_TYPES(varIdx)=EQUATIONS_SET%derived%variableTypes(derivedIdx)
+                END IF
+              END DO
+              IF(EQUATIONS_SET%derived%derivedFieldAutoCreated) THEN
+                CALL FIELD_NUMBER_OF_VARIABLES_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField, &
+                  & EQUATIONS_SET%derived%numberOfVariables,ERR,ERROR,*999)
+                CALL FIELD_VARIABLE_TYPES_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,VARIABLE_TYPES,ERR,ERROR,*999)
+                DO derivedIdx=1,EQUATIONS_SET_NUMBER_OF_DERIVED_TYPES
+                  variableType=EQUATIONS_SET%derived%variableTypes(derivedIdx)
+                  IF(variableType/=0) THEN
+                    CALL FIELD_DATA_TYPE_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,variableType, &
+                      & FIELD_DP_TYPE,ERR,ERROR,*999)
+                    SELECT CASE(derivedidx)
+                    CASE(EQUATIONS_SET_DERIVED_STRAIN)
+                      CALL FIELD_DIMENSION_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & FIELD_VECTOR_DIMENSION_TYPE,ERR,ERROR,*999)
+                      CALL FIELD_VARIABLE_LABEL_SET(EQUATIONS_SET%derived%derivedField,variableType,"Strain",ERR,ERROR,*999)
+                      CALL FIELD_NUMBER_OF_COMPONENTS_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & 6,ERR,ERROR,*999)
+                    CASE(EQUATIONS_SET_DERIVED_STRESS)
+                      CALL FIELD_DIMENSION_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & FIELD_VECTOR_DIMENSION_TYPE,ERR,ERROR,*999)
+                      CALL FIELD_VARIABLE_LABEL_SET(EQUATIONS_SET%derived%derivedField,variableType,"Stress",ERR,ERROR,*999)
+                      CALL FIELD_NUMBER_OF_COMPONENTS_SET_AND_LOCK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & 6,ERR,ERROR,*999)
+                    CASE DEFAULT
+                      CALL FLAG_ERROR("The specified derived field type of "//TRIM(NUMBER_TO_VSTRING(derivedIdx,"*",ERR,ERROR))// &
+                        & " is not supported for a finite elasticity equations set type.",ERR,ERROR,*999)
+                    END SELECT
+                  END IF
+                END DO
+                !Finish creating the derived field
+                CALL FIELD_CREATE_FINISH(EQUATIONS_SET%derived%derivedField,ERR,ERROR,*999)
+              ELSE
+                !Check the user specified derived field
+                CALL FIELD_TYPE_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_GENERAL_TYPE,ERR,ERROR,*999)
+                CALL FIELD_DEPENDENT_TYPE_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_DEPENDENT_TYPE,ERR,ERROR,*999)
+                CALL FIELD_NUMBER_OF_VARIABLES_CHECK(EQUATIONS_SET_SETUP%FIELD, &
+                  & EQUATIONS_SET%derived%numberOfVariables,ERR,ERROR,*999)
+                CALL FIELD_VARIABLE_TYPES_CHECK(EQUATIONS_SET_SETUP%FIELD,VARIABLE_TYPES,ERR,ERROR,*999)
+
+                DO derivedIdx=1,EQUATIONS_SET_NUMBER_OF_DERIVED_TYPES
+                  variableType=EQUATIONS_SET%derived%variableTypes(derivedIdx)
+                  IF(variableType/=0) THEN
+                    CALL FIELD_DATA_TYPE_CHECK(EQUATIONS_SET_SETUP%FIELD,FIELD_U_VARIABLE_TYPE,FIELD_DP_TYPE,ERR,ERROR,*999)
+                    SELECT CASE(derivedidx)
+                    CASE(EQUATIONS_SET_DERIVED_STRAIN)
+                      CALL FIELD_DIMENSION_CHECK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & FIELD_VECTOR_DIMENSION_TYPE,ERR,ERROR,*999)
+                      CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & 6,ERR,ERROR,*999)
+                    CASE(EQUATIONS_SET_DERIVED_STRESS)
+                      CALL FIELD_DIMENSION_CHECK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & FIELD_VECTOR_DIMENSION_TYPE,ERR,ERROR,*999)
+                      CALL FIELD_NUMBER_OF_COMPONENTS_CHECK(EQUATIONS_SET%derived%derivedField,variableType, &
+                        & 6,ERR,ERROR,*999)
+                    CASE DEFAULT
+                      CALL FLAG_ERROR("The specified derived field type of "//TRIM(NUMBER_TO_VSTRING(derivedIdx,"*",ERR,ERROR))// &
+                        & " is not supported for a finite elasticity equations set type.",ERR,ERROR,*999)
+                    END SELECT
+                  END IF
+                END DO
+              END IF
+            ELSE
+              CALL FLAG_ERROR("Equations set derived is not associated.",ERR,ERROR,*999)
+            ENDIF
+          CASE DEFAULT
+            LOCAL_ERROR="The action type of "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET_SETUP%ACTION_TYPE,"*",ERR,ERROR))// &
+              & " for a setup type of "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
+              & " is invalid for a finite elasticity equation."
+            CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
+          END SELECT
         CASE DEFAULT
           LOCAL_ERROR="The setup type of "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET_SETUP%SETUP_TYPE,"*",ERR,ERROR))// &
             & " is invalid for a finite elasticity equation."
@@ -6421,7 +6473,7 @@ CONTAINS
                       VALID_SUBTYPE=.TRUE.
                       !compute the strain field
                       DEPENDENT_FIELD=>EQUATIONS_SET%EQUATIONS%INTERPOLATION%DEPENDENT_FIELD
-                      CALL FiniteElasticityEquationsSet_StrainCalculate(EQUATIONS_SET,DEPENDENT_FIELD, &
+                      CALL FiniteElasticity_StrainCalculate(EQUATIONS_SET,DEPENDENT_FIELD, &
                         & FIELD_U1_VARIABLE_TYPE,ERR,ERROR,*999)
                       !check for a linked CellML solver 
                       CELLML_SOLVER=>SOLVER%NONLINEAR_SOLVER%NEWTON_SOLVER%CELLML_EVALUATOR_SOLVER

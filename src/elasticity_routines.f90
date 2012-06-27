@@ -80,9 +80,7 @@ MODULE ELASTICITY_ROUTINES
 
   PUBLIC ELASTICITY_EQUATIONS_SET_SOLUTION_METHOD_SET
 
-  PUBLIC ElasticityEquationsSet_StrainCalculate
-
-  PUBLIC ElasticityEquationsSet_StressCalculate
+  PUBLIC ElasticityEquationsSet_DerivedVariableCalculate
 
   PUBLIC ELASTICITY_EQUATIONS_SET_BOUNDARY_CONDITIONS_ANALYTIC
   
@@ -414,17 +412,16 @@ CONTAINS
   !================================================================================================================================
   !
 
-  !>Calculates the strain field for the elasticity equations set. \see OPENCMISS::CMISSEquationsSet_StrainCalculate
-  SUBROUTINE ElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*)
+  !>Calculates a derived value for the elasticity equations set. \see OPENCMISS::CMISSEquationsSet_DerivedCalculate
+  SUBROUTINE ElasticityEquationsSet_DerivedVariableCalculate(equationsSet,derivedType,err,error,*)
 
     !Argument variables
-    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate strain for
-    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
-    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
+    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate the output for
+    INTEGER(INTG), INTENT(IN) :: derivedType !<The derived field type to calculate. \see EQUATIONS_SET_CONSTANTS_DerivedTypes.
     INTEGER(INTG), INTENT(OUT) :: err !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
 
-    CALL ENTERS("ElasticityEquationsSet_StrainCalculate",err,error,*999)
+    CALL ENTERS("ElasticityEquationsSet_DerivedVariableCalculate",err,error,*999)
 
     IF(ASSOCIATED(equationsSet)) THEN
       IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
@@ -434,7 +431,8 @@ CONTAINS
         CASE(EQUATIONS_SET_LINEAR_ELASTICITY_TYPE)
           CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
         CASE(EQUATIONS_SET_FINITE_ELASTICITY_TYPE)
-          CALL FiniteElasticityEquationsSet_StrainCalculate(equationsSet,strainField,strainFieldVariableType,err,error,*999)
+          CALL FiniteElasticityEquationsSet_DerivedVariableCalculate(equationsSet,derivedType, &
+            & err,error,*999)
         CASE DEFAULT
           CALL FLAG_ERROR("Equations set equation type of "//TRIM(NUMBER_TO_VSTRING(equationsSet%TYPE,"*",err,error))// &
             & " is not valid for an elasticity equations set class.",err,error,*999)
@@ -444,57 +442,12 @@ CONTAINS
       CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
     ENDIF
 
-    CALL EXITS("ElasticityEquationsSet_StrainCalculate")
+    CALL EXITS("ElasticityEquationsSet_DerivedVariableCalculate")
     RETURN
-999 CALL ERRORS("ElasticityEquationsSet_StrainCalculate",err,error)
-    CALL EXITS("ElasticityEquationsSet_StrainCalculate")
+999 CALL ERRORS("ElasticityEquationsSet_DerivedVariableCalculate",err,error)
+    CALL EXITS("ElasticityEquationsSet_DerivedVariableCalculate")
     RETURN 1
-  END SUBROUTINE ElasticityEquationsSet_StrainCalculate
-
-  !
-  !================================================================================================================================
-  !
-
-  !>Calculates the stress field for the elasticity equations set. \see OPENCMISS::CMISSEquationsSet_StressCalculate
-  SUBROUTINE ElasticityEquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
-      & stressField,stressFieldVariableType,err,error,*)
-
-    !Argument variables
-    TYPE(EQUATIONS_SET_TYPE), POINTER, INTENT(IN) :: equationsSet !<A pointer to the equations set to calculate stress for
-    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: strainField !<The field to store the strain in.
-    INTEGER(INTG), INTENT(IN) :: strainFieldVariableType !<The field variable type of the strain field to store the strain in.
-    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: stressField !<The field to store the stress in.
-    INTEGER(INTG), INTENT(IN) :: stressFieldVariableType !<The field variable type of the stress field to store the stress in.
-    INTEGER(INTG), INTENT(OUT) :: err !<On return, the error code
-    TYPE(VARYING_STRING), INTENT(OUT) :: error !<On return, the error string
-
-    CALL ENTERS("ElasticityEquationsSet_StressCalculate",err,error,*999)
-
-    IF(ASSOCIATED(equationsSet)) THEN
-      IF(.NOT.equationsSet%EQUATIONS_SET_FINISHED) THEN
-        CALL FLAG_ERROR("Equations set has not been finished.",err,error,*999)
-      ELSE
-        SELECT CASE(equationsSet%TYPE)
-        CASE(EQUATIONS_SET_LINEAR_ELASTICITY_TYPE)
-          CALL FLAG_ERROR("Not implemented.",ERR,ERROR,*999)
-        CASE(EQUATIONS_SET_FINITE_ELASTICITY_TYPE)
-          CALL FiniteElasticityEquationsSet_StressCalculate(equationsSet,strainField,strainFieldVariableType, &
-            & stressField,stressFieldVariableType,err,error,*999)
-        CASE DEFAULT
-          CALL FLAG_ERROR("Equations set equation type of "//TRIM(NUMBER_TO_VSTRING(equationsSet%TYPE,"*",ERR,ERROR))// &
-            & " is not valid for an elasticity equations set class.",err,error,*999)
-        END SELECT
-      ENDIF
-    ELSE
-      CALL FLAG_ERROR("Equations set is not associated.",err,error,*999)
-    ENDIF
-
-    CALL EXITS("ElasticityEquationsSet_StressCalculate")
-    RETURN
-999 CALL ERRORS("ElasticityEquationsSet_StressCalculate",err,error)
-    CALL EXITS("ElasticityEquationsSet_StressCalculate")
-    RETURN 1
-  END SUBROUTINE ElasticityEquationsSet_StressCalculate
+  END SUBROUTINE ElasticityEquationsSet_DerivedVariableCalculate
 
   !
   !================================================================================================================================
