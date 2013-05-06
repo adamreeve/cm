@@ -2896,7 +2896,7 @@ CONTAINS
                   & EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE, &
                   & EQUATIONS_SET_TRANSVERSE_ISOTROPIC_HUMPHREY_YIN_SUBTYPE)
               IF(.NOT.ASSOCIATED(EQUATIONS_SET%GEOMETRY%FIBRE_FIELD)) CALL FLAG_ERROR( &
-                & "Finite elascitiy equations require a fibre field.",ERR,ERROR,*999)
+                & "Finite elascticity equations require a fibre field.",ERR,ERROR,*999)
             CASE DEFAULT
               LOCAL_ERROR="The equation set subtype of "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET%SUBTYPE,"*",ERR,ERROR))// &
                 & " is invalid for a finite elasticity equation"
