@@ -2278,11 +2278,11 @@ CONTAINS
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_POWER_SUBTYPE)
       ! An isotropic power-law based relationship:
-      ! W = c0 (J1 - 3) + c1 (I1 - 3)^p + K (J - 1) - K ln(J)
+      ! W = c0 (J1 - 3) + c1 (I1 - 3)^q + K (J - 1) - K ln(J)
       !
       ! c0 = C(1)
       ! c1 = C(2)
-      ! p = C(3)
+      ! q = C(3)
       ! K = C(4)
       ! phi^s_0 = C(5)
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
