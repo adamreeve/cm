@@ -2286,10 +2286,17 @@ CONTAINS
       ! K = C(4)
       ! phi^s_0 = C(5)
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
+      IF(ABS(C(3)-1.0_DP) < 1.0e-9) THEN
+        TEMPTERM=1.0_DP
+      ELSE IF(I1<3.0_DP) THEN
+        TEMPTERM=-C(3)*(3.0_DP-I1)**(C(3)-1.0_DP)
+      ELSE
+        TEMPTERM=C(3)*(I1-3.0_DP)**(C(3)-1.0_DP)
+      END IF
 
       PIOLA_TENSOR=2.0_DP*C(5)*( &
         & C(1)*I3**(-1.0_DP/3.0_DP)*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU) + &
-        & C(2)*C(3)*(I1-3.0_DP)**(C(3)-1.0_DP)*IDENTITY) + &
+        & C(2)*TEMPTERM*IDENTITY) + &
         & 0.5_DP*C(4)*(Jznu - 1.0_DP)*AZU - &
         & DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
 
