@@ -2285,11 +2285,11 @@ CONTAINS
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_POWER_SUBTYPE)
       ! An isotropic power-law based relationship:
-      ! W = c0 (J1 - 3) + c1 (I1 - 3)^q + K (J - 1) - K ln(J)
+      ! W = c0 (J1 - 3) + (c1/k) (I1 - 3)^k + K (J - 1) - K ln(J)
       !
       ! c0 = C(1)
       ! c1 = C(2)
-      ! q = C(3)
+      ! k = C(3)
       ! K = C(4)
       ! phi^s_0 = C(5)
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
@@ -2303,13 +2303,13 @@ CONTAINS
 
       PIOLA_TENSOR=2.0_DP*C(5)*( &
         & C(1)*I3**(-1.0_DP/3.0_DP)*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU) + &
-        & C(2)*TEMPTERM*IDENTITY) + &
+        & (C(2)/C(3))*TEMPTERM*IDENTITY) + &
         & 0.5_DP*C(4)*(Jznu - 1.0_DP)*AZU - &
         & DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
 
     CASE(EQUATIONS_SET_POWER_VOLUME_CONSTRAINED_SUBTYPE)
       ! An isotropic power-law based relationship:
-      ! W = c0 (J1 - 3) + c1 (I1 - 3)^k
+      ! W = c0 (J1 - 3) + (c1/k) (I1 - 3)^k
       ! J is also constrained
       !
       ! c0 = C(1)
@@ -2327,7 +2327,7 @@ CONTAINS
 
       PIOLA_TENSOR=2.0_DP*( &
         & C(1)*I3**(-1.0_DP/3.0_DP)*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU) + &
-        & C(2)*TEMPTERM*IDENTITY) + &
+        & (C(2)/C(3))*TEMPTERM*IDENTITY) + &
         & 2.0_DP*P*AZU
 
     CASE(EQUATIONS_SET_TRANSVERSE_ISOTROPIC_EXPONENTIAL_SUBTYPE) 
