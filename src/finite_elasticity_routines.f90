@@ -2315,7 +2315,7 @@ CONTAINS
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_POWER_SUBTYPE)
       ! An isotropic power-law based relationship:
-      ! W = c0 (J1 - 3) + (c1/k) (I1 - 3)^k + K (J - 1) - K ln(J)
+      ! W = c0 (I1 - 3) + (c1/k) (I1 - 3)^k + K (J - 1) - K ln(J)
       !
       ! c0 = C(1)
       ! c1 = C(2)
@@ -2323,8 +2323,11 @@ CONTAINS
       ! K = C(4)
       ! phi^s_0 = C(5)
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
+      p0=2.0_DP*C(1)
+
       IF(ABS(C(3)-1.0_DP) < 1.0e-9) THEN
         TEMPTERM=1.0_DP
+        p0=p0+2.0_DP*C(2)
       ELSE IF(I1<3.0_DP) THEN
         TEMPTERM=-C(3)*(3.0_DP-I1)**(C(3)-1.0_DP)
       ELSE
@@ -2332,10 +2335,10 @@ CONTAINS
       END IF
 
       PIOLA_TENSOR=2.0_DP*C(5)*( &
-        & C(1)*I3**(-1.0_DP/3.0_DP)*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU) + &
+        & C(1)*IDENTITY + &
         & (C(2)/C(3))*TEMPTERM*IDENTITY) + &
         & C(4)*(Jznu - 1.0_DP)*AZU - &
-        & DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
+        & (DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*AZU
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_MR_SUBTYPE)
       ! An isotropic Mooney-Rivlin based relationship:
