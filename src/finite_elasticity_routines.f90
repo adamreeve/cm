@@ -2182,6 +2182,7 @@ CONTAINS
     INTEGER(INTG) :: EQUATIONS_SET_SUBTYPE !<The equation subtype
     INTEGER(INTG) :: i,j,PRESSURE_COMPONENT,dof_idx
     REAL(DP) :: AZL(3,3),AZU(3,3),DZDNUT(3,3),PIOLA_TENSOR(3,3),E(3,3),P,IDENTITY(3,3),AZLT(3,3),AZUT(3,3)
+    REAL(DP) :: DZDNUI(3,3),DZDNUIT(3,3)
     REAL(DP) :: I1,I2,I3,J1,J2,added_fluid_vol    !Invariants, if needed
     REAL(DP) :: TEMP(3,3),TEMPTERM  !Temporary variables
     TYPE(VARYING_STRING) :: LOCAL_ERROR
@@ -2497,12 +2498,25 @@ CONTAINS
       B(1,:) = [C(5), C(6), C(7)]
       B(2,:) = [C(6), C(8), C(9)]
       B(3,:) = [C(7), C(9), C(10)]
+      !p0 = 2.0_DP * (1.0_DP-C(4)) * C(1)
       p0 = 2.0_DP * C(1)
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
-      PIOLA_TENSOR=2.0_DP*((1.0_DP-C(4))*C(1)*EXP(C(2)*(I1-3.0_DP))*IDENTITY) &
+      CALL INVERT(DZDNU,DZDNUI,tempterm,ERR,ERROR,*999)
+      CALL MATRIX_TRANSPOSE(DZDNUI,DZDNUIT,ERR,ERROR,*999)
+      PIOLA_TENSOR=2.0_DP*(C(1)*EXP(C(2)*(I1-3.0_DP))*IDENTITY) &
         & + C(3)*(Jznu - 1.0_DP)*AZU &
-        & - (Jznu - 1.0_DP + C(4))*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*AZU &
-        & - (1.0_DP - C(4))*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*B
+        & - (DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*DZDNUI*B*DZDNUIT
+      !WRITE(*,*) "C:", C
+      !WRITE(*,*) "B:", B
+      !WRITE(*,*) "K:", C(3)
+      !WRITE(*,*) "AZL:", AZL
+      !WRITE(*,*) "I1:", I1
+      !WRITE(*,*) "PK2:", PIOLA_TENSOR
+      !PIOLA_TENSOR=2.0_DP*((1.0_DP-C(4))*C(1)*EXP(C(2)*(I1-3.0_DP))*IDENTITY) &
+      !  & - (1.0_DP - C(4))*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu**(1./3.)*B
+      !  & - C(4)*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*AZU &
+        ! middle line previously:
+        !& - (Jznu - 1.0_DP + C(4))*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*AZU &
 
     CASE(EQUATIONS_SET_POWER_VOLUME_CONSTRAINED_SUBTYPE)
       ! An isotropic power-law based relationship:
