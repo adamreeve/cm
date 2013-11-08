@@ -3210,8 +3210,8 @@ CONTAINS
                   & EQUATIONS_SET_CONSTITUTIVE_LAW_IN_CELLML_EVALUATE_SUBTYPE, &
                   & EQUATIONS_SET_INCOMPRESSIBLE_ELAST_MULTI_COMP_DARCY_SUBTYPE, &
                   & EQUATIONS_SET_TRANSVERSE_ISOTROPIC_HUMPHREY_YIN_SUBTYPE)
-              IF(.NOT.ASSOCIATED(EQUATIONS_SET%GEOMETRY%FIBRE_FIELD)) CALL FLAG_ERROR( &
-                & "Finite elascticity equations require a fibre field.",ERR,ERROR,*999)
+              ! also not an error here now either, if no fibre field is supplied, the
+              ! fibre directions are assumed to be aligned with the reference geometry
             CASE DEFAULT
               LOCAL_ERROR="The equation set subtype of "//TRIM(NUMBER_TO_VSTRING(EQUATIONS_SET%SUBTYPE,"*",ERR,ERROR))// &
                 & " is invalid for a finite elasticity equation"
