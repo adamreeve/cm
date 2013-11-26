@@ -4345,7 +4345,9 @@ CONTAINS
           !Finalise the setup
           CALL EQUATIONS_SET_SETUP_FINALISE(equationsSetSetupInfo,err,error,*999)
           !Set pointers
-          IF(.NOT.equationsSet%derived%derivedFieldAutoCreated) THEN
+          IF(equationsSet%derived%derivedFieldAutoCreated) THEN
+            derivedField=>equationsSet%derived%derivedField
+          ELSE
             equationsSet%derived%derivedField=>derivedField
           END IF
         ELSE
