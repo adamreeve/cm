@@ -4271,6 +4271,7 @@ CONTAINS
     TYPE(FIELD_TYPE), POINTER :: field,geometricField
     TYPE(REGION_TYPE), POINTER :: region,derivedFieldRegion
     TYPE(VARYING_STRING) :: dummyError,localError
+    LOGICAL :: derivedFieldAutoCreated
 
     CALL ENTERS("EquationsSet_DerivedCreateStart",err,error,*998)
 
@@ -4317,6 +4318,7 @@ CONTAINS
             ELSE
               CALL FLAG_ERROR("The specified derived field has not been finished.",err,error,*999)
             END IF
+            derivedFieldAutoCreated=.FALSE.
           ELSE
             !Check the user number has not already been used for a field in this region.
             NULLIFY(field)
@@ -4328,9 +4330,10 @@ CONTAINS
                 & TRIM(NUMBER_TO_VSTRING(region%USER_NUMBER,"*",err,error))//"."
               CALL FLAG_ERROR(localError,err,error,*999)
             END IF
-            equationsSet%derived%derivedFieldAutoCreated=.TRUE.
+            derivedFieldAutoCreated=.TRUE.
           END IF
           CALL EquationsSet_DerivedInitialise(equationsSet,err,error,*999)
+          equationsSet%derived%derivedFieldAutoCreated=derivedFieldAutoCreated
           !Initialise the setup
           CALL EQUATIONS_SET_SETUP_INITIALISE(equationsSetSetupInfo,err,error,*999)
           equationsSetSetupInfo%SETUP_TYPE=EQUATIONS_SET_SETUP_DERIVED_TYPE
