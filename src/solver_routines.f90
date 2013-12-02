@@ -515,6 +515,8 @@ MODULE SOLVER_ROUTINES
 
   PUBLIC SolverEquations_RhsVectorGet
 
+  PUBLIC SolverEquations_BoundaryConditionsIncrement
+
   PUBLIC SOLVER_LABEL_GET,SOLVER_LABEL_SET
   
   PUBLIC SOLVER_LIBRARY_TYPE_GET,SOLVER_LIBRARY_TYPE_SET
@@ -6808,6 +6810,289 @@ CONTAINS
     RETURN 1
 
   END SUBROUTINE SOLVER_EQUATIONS_BOUNDARY_CONDITIONS_CREATE_START
+
+  !
+  !================================================================================================================================
+  !
+
+  !> Update boundary conditions values for any incremented boundary conditions in the solver equations
+  SUBROUTINE SolverEquations_BoundaryConditionsIncrement(solverEquations,iterationNumber,maximumNumberOfIterations,err,error,*)
+
+    !Argument variables
+    TYPE(SOLVER_EQUATIONS_TYPE), POINTER, INTENT(INOUT) :: solverEquations !<The solver equations to increment the boundary conditions for
+    INTEGER(INTG), INTENT(IN) :: iterationNumber !<The current load increment iteration index
+    INTEGER(INTG), INTENT(IN) :: maximumNumberOfIterations !<Final index for the load increment loop
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+
+    !Local variables
+    TYPE(FIELD_TYPE), POINTER :: dependentField
+    TYPE(FIELD_VARIABLE_TYPE), POINTER :: dependentVariable
+    TYPE(DOMAIN_MAPPING_TYPE), POINTER :: domainMapping
+    TYPE(BOUNDARY_CONDITIONS_TYPE), POINTER :: boundaryConditions
+    TYPE(BOUNDARY_CONDITIONS_VARIABLE_TYPE), POINTER :: boundaryConditionsVariable
+    TYPE(BOUNDARY_CONDITIONS_DIRICHLET_TYPE), POINTER :: dirichletBoundaryConditions
+    TYPE(BOUNDARY_CONDITIONS_PRESSURE_INCREMENTED_TYPE), POINTER :: pressureIncrementedBoundaryConditions
+    INTEGER(INTG) :: variableIdx, variableType, dirichletIdx, dirichletDofIdx, neumannPointDof
+    INTEGER(INTG) :: conditionIdx, conditionGlobalDof, conditionLocalDof, myComputationalNodeNumber
+    REAL(DP), POINTER :: fullLoads(:), currentLoads(:), prevLoads(:)
+    REAL(DP) :: fullLoad, currentLoad, newLoad, prevLoad
+    TYPE(VARYING_STRING) :: localError
+
+    CALL Enters("SolverEquations_BoundaryConditionsIncrement",err,error,*999)
+
+    NULLIFY(boundaryConditions)
+    NULLIFY(dependentField)
+    NULLIFY(dependentVariable)
+    NULLIFY(boundaryConditionsVariable)
+    NULLIFY(dirichletBoundaryConditions)
+    NULLIFY(fullLoads)
+    NULLIFY(currentLoads)
+
+    myComputationalNodeNumber=COMPUTATIONAL_NODE_NUMBER_GET(err,error)
+
+    !Take the stored load, scale it down appropriately then apply to the unknown variables
+    IF(DIAGNOSTICS1) THEN
+      CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"  iteration number: ",iterationNumber,err,error,*999)
+      CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"  maximum iterations: ",maximumNumberOfIterations,err,error,*999)
+    END IF
+    IF(ASSOCIATED(solverEquations)) THEN
+      CALL SOLVER_EQUATIONS_BOUNDARY_CONDITIONS_GET(solverEquations,boundaryConditions,err,error,*999)
+      IF(ASSOCIATED(boundaryConditions)) THEN
+        IF(ALLOCATED(boundaryConditions%boundary_conditions_variables)) THEN
+          !Loop over the boundary conditions variables
+          DO variableIdx=1,boundaryConditions%number_of_boundary_conditions_variables
+            boundaryConditionsVariable=>boundaryConditions%boundary_conditions_variables(variableIdx)%PTR
+            IF(ASSOCIATED(boundaryConditionsVariable)) THEN
+              dependentVariable=>boundaryConditionsVariable%variable
+              IF(.NOT.ASSOCIATED(dependentVariable)) THEN
+                CALL FlagError("Boundary conditions variable field variable is not associated.",err,error,*999)
+              END IF
+              variableType=boundaryConditionsVariable%variable_type
+              dependentField=>dependentVariable%field
+              IF(.NOT.ASSOCIATED(dependentField)) THEN
+                CALL FlagError("Boundary conditions variable field dependent field is not associated.",err,error,*999)
+              END IF
+              domainMapping=>dependentVariable%DOMAIN_MAPPING
+              IF(ASSOCIATED(domainMapping)) THEN
+                ! Check if there are any incremented conditions applied for this boundary conditions variable
+                IF(boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_FIXED_INCREMENTED)>0.OR. &
+                    & boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_MOVED_WALL_INCREMENTED)>0) THEN
+                  IF(ASSOCIATED(boundaryConditionsVariable%dirichlet_boundary_conditions)) THEN
+                    dirichletBoundaryConditions=>boundaryConditionsVariable%dirichlet_boundary_conditions
+                    !Get the pointer to vector holding the full and current loads
+                    !   full load: FIELD_BOUNDARY_CONDITIONS_SET_TYPE - holds the target load values
+                    !   current load: FIELD_VALUES_SET_TYPE - holds the current increment values
+                    CALL FIELD_PARAMETER_SET_DATA_GET(dependentField,variableType,FIELD_BOUNDARY_CONDITIONS_SET_TYPE, &
+                      & fullLoads,err,error,*999)
+                    !chrm 22/06/2010: 'FIELD_BOUNDARY_CONDITIONS_SET_TYPE' does not get updated with time (update_BCs)
+                    !\ToDo: How can this be achieved ???
+                    CALL FIELD_PARAMETER_SET_DATA_GET(dependentField,variableType,FIELD_VALUES_SET_TYPE, &
+                      & currentLoads,err,error,*999)
+                    !Get full increment, calculate new load, then apply to dependent field
+                    DO dirichletIdx=1,boundaryConditionsVariable%NUMBER_OF_DIRICHLET_CONDITIONS
+                      dirichletDofIdx=dirichletBoundaryConditions%DIRICHLET_DOF_INDICES(dirichletIdx)
+                      !Check whether we have an incremented boundary condition type
+                      SELECT CASE(boundaryConditionsVariable%CONDITION_TYPES(dirichletDofIdx))
+                      CASE(BOUNDARY_CONDITION_FIXED_INCREMENTED, &
+                          & BOUNDARY_CONDITION_MOVED_WALL_INCREMENTED)
+                        !Convert dof index to local index
+                        IF(domainMapping%GLOBAL_TO_LOCAL_MAP(dirichletDofIdx)%DOMAIN_NUMBER(1)== &
+                          & myComputationalNodeNumber) THEN
+                          dirichletDofIdx=domainMapping%GLOBAL_TO_LOCAL_MAP(dirichletDofIdx)%LOCAL_NUMBER(1)
+                          IF(0<dirichletDofIdx.AND.dirichletDofIdx<domainMapping%GHOST_START) THEN
+                            fullLoad=fullLoads(dirichletDofIdx)
+                            ! Apply full load if last step, or fixed BC
+                            IF(iterationNumber==maximumNumberOfIterations) THEN
+                              CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType,FIELD_VALUES_SET_TYPE, &
+                                & dirichletDofIdx,fullLoad,err,error,*999)
+                            ELSE
+                              !Calculate new load and apply to dependent field
+                              currentLoad=currentLoads(dirichletDofIdx)
+                              newLoad=currentLoad+(fullLoad-currentLoad)/(maximumNumberOfIterations-iterationNumber+1)
+                              IF(DIAGNOSTICS1) THEN
+                                CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"  dof idx",dirichletDofIdx,err,error,*999)
+                                CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"    current load",currentLoad,err,error,*999)
+                                CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"    new load",newLoad,err,error,*999)
+                              END IF
+                              CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType,FIELD_VALUES_SET_TYPE, &
+                                & dirichletDofIdx,newLoad,err,error,*999)
+                            END IF !Full or intermediate load
+                          END IF !non-ghost dof
+                        END IF !current domain
+                      CASE DEFAULT
+                        !Do nothing for non-incremented boundary conditions
+                      END SELECT
+                    END DO !dirichletIdx
+                    !Send boundary values to other computational nodes/get ghost values
+                    CALL FIELD_PARAMETER_SET_UPDATE_START(dependentField, &
+                      & variableType, FIELD_VALUES_SET_TYPE,err,error,*999)
+                    CALL FIELD_PARAMETER_SET_UPDATE_FINISH(dependentField, &
+                      & variableType, FIELD_VALUES_SET_TYPE,err,error,*999)
+                    !Restore the vector handles
+                    CALL FIELD_PARAMETER_SET_DATA_RESTORE(dependentField,variableType,FIELD_BOUNDARY_CONDITIONS_SET_TYPE, &
+                      & fullLoads,err,error,*999)
+                    CALL FIELD_PARAMETER_SET_DATA_RESTORE(dependentField,variableType,FIELD_VALUES_SET_TYPE, &
+                      & currentLoads,err,error,*999)
+                  ELSE
+                    localError="Dirichlet boundary condition for variable type "// &
+                      & TRIM(NumberToVstring(variableType,"*",err,error))//" is not associated."
+                    CALL FlagError(localError,err,error,*999)
+                  END IF
+                END IF
+
+                ! Also increment any incremented Neumann point conditions
+                IF(boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_NEUMANN_POINT_INCREMENTED)>0) THEN
+                  IF(ASSOCIATED(boundaryConditionsVariable%neumannBoundaryConditions)) THEN
+                    ! The boundary conditions parameter set contains the full values and the
+                    ! current incremented values are transferred to the point values vector
+                    DO conditionIdx=1,boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_NEUMANN_POINT_INCREMENTED)+ &
+                        & boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_NEUMANN_POINT)
+                      conditionGlobalDof=boundaryConditionsVariable%neumannBoundaryConditions%setDofs(conditionIdx)
+                      ! conditionGlobalDof could be for non-incremented point Neumann condition
+                      IF(boundaryConditionsVariable%CONDITION_TYPES(conditionGlobalDof)/= &
+                        & BOUNDARY_CONDITION_NEUMANN_POINT_INCREMENTED) CYCLE
+                        IF(domainMapping%GLOBAL_TO_LOCAL_MAP(conditionGlobalDof)%DOMAIN_NUMBER(1)== &
+                        & myComputationalNodeNumber) THEN
+                        conditionLocalDof=domainMapping%GLOBAL_TO_LOCAL_MAP(conditionGlobalDof)% &
+                          & LOCAL_NUMBER(1)
+                        neumannPointDof=boundaryConditionsVariable%neumannBoundaryConditions%pointDofMapping% &
+                          & GLOBAL_TO_LOCAL_MAP(conditionIdx)%LOCAL_NUMBER(1)
+                        CALL FIELD_PARAMETER_SET_GET_LOCAL_DOF(dependentField,variableType, &
+                          & FIELD_BOUNDARY_CONDITIONS_SET_TYPE,conditionLocalDof,fullLoad,err,error,*999)
+                        CALL DISTRIBUTED_VECTOR_VALUES_SET(boundaryConditionsVariable%neumannBoundaryConditions% &
+                          & pointValues,neumannPointDof,fullLoad*(REAL(iterationNumber)/REAL(maximumNumberOfIterations)), &
+                          & err,error,*999)
+                      END IF
+                    END DO
+                  ELSE
+                    localError="Neumann boundary conditions for variable type "// &
+                      & TRIM(NumberToVstring(variableType,"*",err,error))//" are not associated even though"// &
+                      & TRIM(NumberToVstring(boundaryConditionsVariable%dof_counts( &
+                      & BOUNDARY_CONDITION_NEUMANN_POINT_INCREMENTED), &
+                      & '*',err,error))//" conditions of this type has been counted."
+                    CALL FlagError(localError,err,error,*999)
+                  END IF
+                END IF
+
+                !There might also be pressure incremented conditions
+                IF (boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_PRESSURE_INCREMENTED)>0) THEN
+                  ! handle pressure incremented boundary conditions
+                  IF(ASSOCIATED(boundaryConditionsVariable%pressure_incremented_boundary_conditions)) THEN
+                    pressureIncrementedBoundaryConditions=>boundaryConditionsVariable% &
+                      & pressure_incremented_boundary_conditions
+                    !Due to a variety of reasons, the pressure incremented type is setup differently to dirichlet conditions.
+                    !We store two sets of vectors, the current and previous values
+                    !   current: FIELD_PRESSURE_VALUES_SET_TYPE - always holds the current increment, even if not incremented
+                    !   previous: FIELD_PREVIOUS_PRESSURE_SET_TYPE - holds the previously applied increment
+                    !Grab the pointers for both
+                    CALL FIELD_PARAMETER_SET_DATA_GET(dependentField,variableType,FIELD_PREVIOUS_PRESSURE_SET_TYPE, &
+                      & prevLoads,err,error,*999)
+                    CALL FIELD_PARAMETER_SET_DATA_GET(dependentField,variableType,FIELD_PRESSURE_VALUES_SET_TYPE, &
+                      & currentLoads,err,error,*999)
+                    !Calculate the new load, update the old load
+                    IF(iterationNumber==1) THEN
+                      !On the first iteration, FIELD_PRESSURE_VALUES_SET_TYPE actually contains the full load
+                      DO conditionIdx=1,boundaryConditionsVariable%dof_counts( &
+                          & BOUNDARY_CONDITION_PRESSURE_INCREMENTED)
+                        !Global dof index
+                        conditionGlobalDof=pressureIncrementedBoundaryConditions%PRESSURE_INCREMENTED_DOF_INDICES &
+                          & (conditionIdx)
+                        !Must convert into local dof index
+                        IF(domainMapping%GLOBAL_TO_LOCAL_MAP(conditionGlobalDof)%DOMAIN_NUMBER(1)== &
+                          & myComputationalNodeNumber) THEN
+                          conditionLocalDof=domainMapping%GLOBAL_TO_LOCAL_MAP(conditionGlobalDof)% &
+                            & LOCAL_NUMBER(1)
+                            IF(0<conditionLocalDof.AND.conditionLocalDof<domainMapping%GHOST_START) THEN
+                            newLoad=currentLoads(conditionLocalDof)
+                            newLoad=newLoad/maximumNumberOfIterations
+                            IF(DIAGNOSTICS1) THEN
+                              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"  dof idx", &
+                                  & conditionLocalDof,err,error,*999)
+                              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"    current load", &
+                                  & currentLoads(conditionLocalDof),err,error,*999)
+                              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"    new load",newLoad,err,error,*999)
+                            END IF
+                            !Update current and previous loads
+                            CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                              & FIELD_PRESSURE_VALUES_SET_TYPE,conditionLocalDof,newLoad,err,error,*999)
+                            CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                              & FIELD_PREVIOUS_PRESSURE_SET_TYPE,conditionLocalDof,0.0_dp,err,error,*999)
+                          END IF !Non-ghost dof
+                        END IF !Current domain
+                      END DO !conditionIdx
+                    ELSE
+                      !Calculate the new load, keep the current load
+                      DO conditionIdx=1,boundaryConditionsVariable%dof_counts( &
+                          & BOUNDARY_CONDITION_PRESSURE_INCREMENTED)
+                        !This is global dof idx
+                        conditionGlobalDof=pressureIncrementedBoundaryConditions%PRESSURE_INCREMENTED_DOF_INDICES &
+                          & (conditionIdx)
+                        !Must convert into local dof index
+                        IF(domainMapping%GLOBAL_TO_LOCAL_MAP(conditionGlobalDof)%DOMAIN_NUMBER(1)== &
+                          & myComputationalNodeNumber) THEN
+                          conditionLocalDof=domainMapping%GLOBAL_TO_LOCAL_MAP(conditionGlobalDof)% &
+                            & LOCAL_NUMBER(1)
+                            IF(0<conditionLocalDof.AND.conditionLocalDof<domainMapping%GHOST_START) THEN
+                            prevLoad=prevLoads(conditionLocalDof)
+                            currentLoad=currentLoads(conditionLocalDof)
+                            newLoad=currentLoad+(currentLoad-prevLoad)  !This may be subject to numerical errors...
+                            IF(DIAGNOSTICS1) THEN
+                              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"  dof idx", &
+                                  & conditionLocalDof,err,error,*999)
+                              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"    current load", &
+                                  & currentLoads(conditionLocalDof),err,error,*999)
+                              CALL WriteStringValue(DIAGNOSTIC_OUTPUT_TYPE,"    new load",newLoad,err,error,*999)
+                            END IF
+                            !Update current and previous loads
+                            CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                              & FIELD_PRESSURE_VALUES_SET_TYPE,conditionLocalDof,newLoad,err,error,*999)
+                            CALL FIELD_PARAMETER_SET_UPDATE_LOCAL_DOF(dependentField,variableType, &
+                              & FIELD_PREVIOUS_PRESSURE_SET_TYPE,conditionLocalDof,currentLoad,err,error,*999)
+                          END IF !Non-ghost dof
+                        END IF !Current domain
+                      END DO !conditionIdx
+                    END IF
+                    !Restore the vector handles
+                    CALL FIELD_PARAMETER_SET_DATA_RESTORE(dependentField,variableType,FIELD_PREVIOUS_PRESSURE_SET_TYPE, &
+                      & prevLoads,err,error,*999)
+                    CALL FIELD_PARAMETER_SET_DATA_RESTORE(dependentField,variableType,FIELD_PRESSURE_VALUES_SET_TYPE, &
+                      & currentLoads,err,error,*999)
+                  ELSE
+                    localError="Pressure incremented boundary condition for variable type "// &
+                      & TRIM(NumberToVstring(variableType,"*",err,error))//" is not associated even though"// &
+                      & TRIM(NumberToVstring(boundaryConditionsVariable%dof_counts(BOUNDARY_CONDITION_PRESSURE_INCREMENTED), &
+                      & '*',err,error))//" conditions of this type has been counted."
+                    CALL FlagError(localError,err,error,*999)
+                  END IF
+                END IF !Pressure incremented bc block
+              ELSE
+                localError="Domain mapping is not associated for variable "// &
+                  & TRIM(NumberToVstring(variableType,"*",err,error))//" of dependent field"
+                CALL FlagError(localError,err,error,*999)
+              END IF !Domain mapping test
+            ELSE
+              CALL FlagError("Boundary conditions variable unassociated for index "// &
+                & TRIM(NumberToVstring(variableIdx,"*",err,error))//".",err,error,*999)
+            END IF
+          END DO !variableIdx
+        ELSE
+          CALL FlagError("Boundary conditions variables are not allocated.",err,error,*999)
+        END IF
+      ELSE
+        CALL FlagError("Boundary conditions are not associated.",err,error,*999)
+      END IF
+    ELSE
+      CALL FlagError("Solver equations are not associated.",err,error,*999)
+    END IF
+
+    CALL Exits("SolverEquations_BoundaryConditionsIncrement")
+    RETURN
+999 CALL Errors("SolverEquations_BoundaryConditionsIncrement",err,error)
+    CALL Exits("SolverEquations_BoundaryConditionsIncrement")
+    RETURN 1
+
+  END SUBROUTINE SolverEquations_BoundaryConditionsIncrement
 
   !
   !================================================================================================================================

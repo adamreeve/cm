@@ -1907,7 +1907,10 @@ CONTAINS
     IF(ASSOCIATED(SOLVER_EQUATIONS)) THEN
       SOLVER_MAPPING=>SOLVER_EQUATIONS%SOLVER_MAPPING
       IF(ASSOCIATED(SOLVER_MAPPING)) THEN
-        !Make sure the equations sets are up to date
+        !Increment the solver equations boundary conditions
+        CALL SolverEquations_BoundaryConditionsIncrement(SOLVER_EQUATIONS,ITERATION_NUMBER, &
+          & MAXIMUM_NUMBER_OF_ITERATIONS,ERR,ERROR,*999)
+        !Increment equations set specific loadings, eg. gravity
         DO equations_set_idx=1,SOLVER_MAPPING%NUMBER_OF_EQUATIONS_SETS
           EQUATIONS_SET=>SOLVER_MAPPING%EQUATIONS_SETS(equations_set_idx)%PTR
           CALL EQUATIONS_SET_LOAD_INCREMENT_APPLY(EQUATIONS_SET,SOLVER_EQUATIONS%BOUNDARY_CONDITIONS,ITERATION_NUMBER, &
