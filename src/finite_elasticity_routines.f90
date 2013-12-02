@@ -1663,8 +1663,7 @@ CONTAINS
     REAL(DP) :: DZDNU(3,3),P,E(3,3),AZL(3,3),AZU(3,3),DZDNUT(3,3)
     REAL(DP) :: Jznu,Jxxi,I3
     REAL(SP) :: ELEMENT_USER_ELAPSED,ELEMENT_SYSTEM_ELAPSED,USER_ELAPSED,USER_TIME2(1),USER_TIME3(1),USER_TIME4(1), &
-      & USER_TIME5(1),SYSTEM_ELAPSED,SYSTEM_TIME2(1),SYSTEM_TIME3(1),SYSTEM_TIME4(1), &
-      & SYSTEM_TIME5(1)
+      & SYSTEM_ELAPSED,SYSTEM_TIME2(1),SYSTEM_TIME3(1),SYSTEM_TIME4(1)
 
     CALL ENTERS("FiniteElasticity_StrainCalculate",err,error,*999)
 
@@ -1829,7 +1828,18 @@ CONTAINS
             & USER_ELAPSED,ERR,ERROR,*999)
           CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"System time for strain field (internal elements) calculation = ", &
             & SYSTEM_ELAPSED,ERR,ERROR,*999)
+          IF(NUMBER_OF_TIMES>0) THEN
+            CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"Average element user time for strain field calculation = ", &
+              & ELEMENT_USER_ELAPSED/NUMBER_OF_TIMES,ERR,ERROR,*999)
+            CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"Average element system time for strain field calculation = ", &
+              & ELEMENT_SYSTEM_ELAPSED/NUMBER_OF_TIMES,ERR,ERROR,*999)
+          ENDIF
         ENDIF !EQUATIONS%OUTPUT_TYPE>=EQUATIONS_TIMING_OUTPUT
+
+        !Transfer values to/from ghost elements
+        CALL FIELD_PARAMETER_SET_UPDATE_START(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,err,error,*999)
+        CALL FIELD_PARAMETER_SET_UPDATE_FINISH(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,err,error,*999)
+
         !Output timing information if required
         IF(EQUATIONS%OUTPUT_TYPE>=EQUATIONS_TIMING_OUTPUT) THEN
           CALL CPU_TIMER(USER_CPU,USER_TIME4,ERR,ERROR,*999)
@@ -1840,111 +1850,6 @@ CONTAINS
             & ERR,ERROR,*999)
           CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"System time for parameter transfer completion = ",SYSTEM_ELAPSED, &
             & ERR,ERROR,*999)              
-        ENDIF !EQUATIONS%OUTPUT_TYPE>=EQUATIONS_TIMING_OUTPUT
-
-        !Loop over the boundary and ghost elements
-        DO element_idx=ELEMENTS_MAPPING%BOUNDARY_START,ELEMENTS_MAPPING%GHOST_FINISH
-          NUMBER_OF_TIMES=NUMBER_OF_TIMES+1
-          ne=ELEMENTS_MAPPING%DOMAIN_LIST(element_idx)
-
-          DEPENDENT_BASIS=>DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%TOPOLOGY%ELEMENTS%ELEMENTS(ne)%BASIS       
-          DEPENDENT_QUADRATURE_SCHEME=>DEPENDENT_BASIS%QUADRATURE%QUADRATURE_SCHEME_MAP(BASIS_DEFAULT_QUADRATURE_SCHEME)%PTR
-          DEPENDENT_NUMBER_OF_GAUSS_POINTS=DEPENDENT_QUADRATURE_SCHEME%NUMBER_OF_GAUSS
-
-          NUMBER_OF_XI=DECOMPOSITION%DOMAIN(MESH_COMPONENT_NUMBER)%PTR%TOPOLOGY%ELEMENTS%ELEMENTS(ne)%BASIS%NUMBER_OF_XI
-
-          CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
-            & GEOMETRIC_INTERPOLATION_PARAMETERS,ERR,ERROR,*999)
-          CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
-            & FIBRE_INTERPOLATION_PARAMETERS,ERR,ERROR,*999)
-          CALL FIELD_INTERPOLATION_PARAMETERS_ELEMENT_GET(FIELD_VALUES_SET_TYPE,ne, &
-            & DEPENDENT_INTERPOLATION_PARAMETERS,ERR,ERROR,*999)
-
-          !Point interpolation pointer
-          GEOMETRIC_INTERPOLATED_POINT=>EQUATIONS%INTERPOLATION%GEOMETRIC_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
-          FIBRE_INTERPOLATED_POINT=>EQUATIONS%INTERPOLATION%FIBRE_INTERP_POINT(FIELD_U_VARIABLE_TYPE)%PTR
-          DEPENDENT_INTERPOLATED_POINT=>EQUATIONS%INTERPOLATION%DEPENDENT_INTERP_POINT(FIELD_VAR_TYPE)%PTR
-
-          !Loop over gauss points
-          DO gauss_idx=1,DEPENDENT_NUMBER_OF_GAUSS_POINTS
-            !Interpolate dependent, geometric, fibre fields
-            CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gauss_idx, &
-              & DEPENDENT_INTERPOLATED_POINT,ERR,ERROR,*999)
-            CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gauss_idx, &
-              & GEOMETRIC_INTERPOLATED_POINT,ERR,ERROR,*999)
-            CALL FIELD_INTERPOLATE_GAUSS(FIRST_PART_DERIV,BASIS_DEFAULT_QUADRATURE_SCHEME,gauss_idx, &
-              & FIBRE_INTERPOLATED_POINT,ERR,ERROR,*999)
-
-            !Calculate F=dZ/dNU, the deformation gradient tensor at the gauss point
-            CALL FINITE_ELASTICITY_GAUSS_DEFORMATION_GRADIENT_TENSOR(DEPENDENT_INTERPOLATED_POINT, &
-              & GEOMETRIC_INTERPOLATED_POINT,FIBRE_INTERPOLATED_POINT,NUMBER_OF_DIMENSIONS, &
-              & NUMBER_OF_XI,DZDNU,Jxxi,ERR,ERROR,*999)
-
-            IF(DIAGNOSTICS1) THEN
-              CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  ELEMENT_NUMBER = ",ne,ERR,ERROR,*999)
-              CALL WRITE_STRING_VALUE(DIAGNOSTIC_OUTPUT_TYPE,"  gauss_idx = ",gauss_idx,ERR,ERROR,*999)
-            ENDIF
-
-            !AZL = F'*F (deformed covariant or right cauchy deformation tensor, C)
-            !E = Green-Lagrange strain tensor = 0.5*(C-I)
-
-            CALL MATRIX_TRANSPOSE(DZDNU,DZDNUT,ERR,ERROR,*999)
-            CALL MATRIX_PRODUCT(DZDNUT,DZDNU,AZL,ERR,ERROR,*999)
-
-            E = 0.5_DP*AZL 
-            DO i=1,3 !NUMBER_OF_DIMENSIONS ???
-              E(i,i)=E(i,i)-0.5_DP
-            ENDDO
-
-            ! we only want to store the indepent components of the STRAIN FIELD
-            IF(NUMBER_OF_DIMENSIONS==3) THEN
-              ! 3 dimensional problem
-              ! ORDER OF THE COMPONENTS: U_11, U_12, U_13, U_22, U_23, U_33 (upper triangular matrix)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,1,E(1,1),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,2,E(1,2),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,3,E(1,3),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,4,E(2,2),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,5,E(2,3),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,6,E(3,3),ERR,ERROR,*999)
-            ELSE IF(NUMBER_OF_DIMENSIONS==2) THEN
-              ! 2 dimensional problem
-              ! ORDER OF THE COMPONENTS: U_11, U_12, U_22 (upper triangular matrix)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,1,E(1,1),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,2,E(1,2),ERR,ERROR,*999)
-              CALL FIELD_PARAMETER_SET_UPDATE_GAUSS_POINT(strainField,strainFieldVariableType,FIELD_VALUES_SET_TYPE,ne, &
-                & gauss_idx,3,E(2,2),ERR,ERROR,*999)
-            ELSE !NUMBER_OF_DIMENSIONS
-              LOCAL_ERROR="Only 2 dimensional and 3 dimensional problems are implemented at the moment."
-              CALL FLAG_ERROR(LOCAL_ERROR,ERR,ERROR,*999)
-            ENDIF !NUMBER_OF_DIMENSIONS
-          ENDDO !gauss_idx
-        ENDDO !element_idx=ELEMENTS_MAPPING%BOUNDARY_START,ELEMENTS_MAPPING%GHOST_FINISH                 
-        !Output timing information if required
-        IF(EQUATIONS%OUTPUT_TYPE>=EQUATIONS_TIMING_OUTPUT) THEN
-          CALL CPU_TIMER(USER_CPU,USER_TIME5,ERR,ERROR,*999)
-          CALL CPU_TIMER(SYSTEM_CPU,SYSTEM_TIME5,ERR,ERROR,*999)
-          USER_ELAPSED=USER_TIME5(1)-USER_TIME4(1)
-          SYSTEM_ELAPSED=SYSTEM_TIME5(1)-SYSTEM_TIME4(1)
-          ELEMENT_USER_ELAPSED=ELEMENT_USER_ELAPSED+USER_ELAPSED
-          ELEMENT_SYSTEM_ELAPSED=ELEMENT_SYSTEM_ELAPSED+USER_ELAPSED
-          CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"User time for strain field (boundary+ghost equations) calculation = ", &
-            & USER_ELAPSED,ERR,ERROR,*999)
-          CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"System time for strain field (boundary+ghost equations) calculation = ", &
-            & SYSTEM_ELAPSED,ERR,ERROR,*999)
-          IF(NUMBER_OF_TIMES>0) THEN
-            CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"Average element user time for strain field calculation = ", &
-              & ELEMENT_USER_ELAPSED/NUMBER_OF_TIMES,ERR,ERROR,*999)
-            CALL WRITE_STRING_VALUE(GENERAL_OUTPUT_TYPE,"Average element system time for strain field calculation = ", &
-              & ELEMENT_SYSTEM_ELAPSED/NUMBER_OF_TIMES,ERR,ERROR,*999)
-          ENDIF
         ENDIF !EQUATIONS%OUTPUT_TYPE>=EQUATIONS_TIMING_OUTPUT
       ELSE
         CALL FLAG_ERROR("Equations set equations is not associated.",ERR,ERROR,*999)
