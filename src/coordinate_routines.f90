@@ -91,6 +91,14 @@ MODULE COORDINATE_ROUTINES
   INTEGER(INTG), PARAMETER :: COORDINATE_JACOBIAN_AREA_TYPE=2 !<Area type Jacobian \see COORDINATE_ROUTINES_JacobianTypes,COORDINATE_ROUTINES
   INTEGER(INTG), PARAMETER :: COORDINATE_JACOBIAN_VOLUME_TYPE=3 !<Volume type Jacobian \see COORDINATE_ROUTINES_JacobianTypes,COORDINATE_ROUTINES
   !>@}
+
+  !> \addtogroup COORDINATE_ROUTINES_FibreAngleTypes COORDINATE_ROUTINES::FibreAngleTypes
+  !> \see COORDINATE_ROUTINES
+  !> \brief The type of fibre angles
+  !>@{
+  INTEGER(INTG), PARAMETER :: COORDINATE_FIBRE_ANGLES_XI_BASED=0 !<Fibre angles are with respect to xi directions \see COORDINATE_ROUTINES_FibreAngleTypes,COORDINATE_ROUTINES
+  INTEGER(INTG), PARAMETER :: COORDINATE_FIBRE_ANGLES_GLOBAL_BASED=1 !<Fibre angles are with respect to global coordinate directions \see COORDINATE_ROUTINES_FibreAngleTypes,COORDINATE_ROUTINES
+  !>@}
   
   !Module types
 
@@ -163,6 +171,8 @@ MODULE COORDINATE_ROUTINES
     & COORDINATE_RADIAL_SQUARED_INTERPOLATION_TYPE,COORDINATE_RADIAL_CUBED_INTERPOLATION_TYPE
   
   PUBLIC COORDINATE_JACOBIAN_NO_TYPE,COORDINATE_JACOBIAN_LINE_TYPE,COORDINATE_JACOBIAN_AREA_TYPE,COORDINATE_JACOBIAN_VOLUME_TYPE
+
+  PUBLIC COORDINATE_FIBRE_ANGLES_XI_BASED,COORDINATE_FIBRE_ANGLES_GLOBAL_BASED
   
   PUBLIC COORDINATE_SYSTEM_TYPE_STRING
 
@@ -3935,14 +3945,29 @@ CONTAINS
     INTEGER(INTG), INTENT(OUT) :: ERR !<The error code
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
+    INTEGER(INTG) :: fibreAngleType
     INTEGER(INTG) :: derivative_idx
     REAL(DP) :: ANGLE,DXDNUR(2,2),DXDXI(2,2),R(2,2),MAGNITUDE
 
     CALL ENTERS("COORDINATE_MATERIAL_COORDINATE_SYSTEM_CALCULATE_2D",ERR,ERROR,*999)
 
-    derivative_idx=PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(1) !2,4,7
-    DXDXI(1,1)=GEOMETRIC_INTERPOLATED_POINT%VALUES(1,derivative_idx) !dx1/dxi1
-    DXDXI(2,1)=GEOMETRIC_INTERPOLATED_POINT%VALUES(2,derivative_idx) !dx2/dxi1
+    fibreAngleType=FIBRE_INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD%fibreAngleType
+    SELECT CASE(fibreAngleType)
+    CASE(COORDINATE_FIBRE_ANGLES_XI_BASED)
+      ! Standard definition of fibre angles with respect to the xi directions
+      derivative_idx=PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(1) !2,4,7
+      DXDXI(1,1)=GEOMETRIC_INTERPOLATED_POINT%VALUES(1,derivative_idx) !dx1/dxi1
+      DXDXI(2,1)=GEOMETRIC_INTERPOLATED_POINT%VALUES(2,derivative_idx) !dx2/dxi1
+    CASE(COORDINATE_FIBRE_ANGLES_GLOBAL_BASED)
+      ! Fibre angles defined with respect to global coordinate system, so
+      ! instead of starting from DXDXI, actually start with the identity matrix (DXDX)
+      DXDXI(1,1)=1.0_DP
+      DXDXI(2,1)=0.0_DP
+    CASE DEFAULT
+      CALL FlagError("Invalid fibre angle type of "// &
+        & TRIM(NumberToVstring(fibreAngleType,"*",err,error))// &
+        & ".",err,error,*999)
+    END SELECT
 
     !First calculate reference material CS
     !reference material direction 1.
@@ -3997,6 +4022,7 @@ CONTAINS
     !Local Variables
     INTEGER(INTG) :: derivative_idx,fibre_idx,geometric_idx,idx1,idx2,xi_idx
     INTEGER(INTG) :: NUMBER_OF_GEOMETRIC_COMPONENTS,NUMBER_OF_FIBRE_COMPONENTS,NUMBER_OF_XI_COORDS 
+    INTEGER(INTG) :: fibreAngleType
     INTEGER(INTG) :: vector(3) = (/1,2,3/)
     REAL(DP) :: ANGLE(3),DXDNU1(3,3),DXDNU2(3,3),DXDNU3(3,3),DXDNUR(3,3),DXDXI(3,3),F(3),G(3),H(3),Ra(3,3),Rb(3,3)
     
@@ -4014,13 +4040,28 @@ CONTAINS
     NUMBER_OF_GEOMETRIC_COMPONENTS=GEOMETRIC_INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD_VARIABLE%NUMBER_OF_COMPONENTS 
     NUMBER_OF_FIBRE_COMPONENTS=FIBRE_INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD_VARIABLE%NUMBER_OF_COMPONENTS    
     NUMBER_OF_XI_COORDS=GEOMETRIC_INTERPOLATED_POINT%interpolation_parameters%bases(1)%ptr%number_of_xi
-    
-    DO geometric_idx=1,NUMBER_OF_GEOMETRIC_COMPONENTS 
-      DO xi_idx=1,NUMBER_OF_XI_COORDS
-        derivative_idx=PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(xi_idx) !2,4,7      
-        DXDXI(geometric_idx,xi_idx)=GEOMETRIC_INTERPOLATED_POINT%VALUES(geometric_idx,derivative_idx) !dx/dxi
-      ENDDO
-    ENDDO
+
+    fibreAngleType=FIBRE_INTERPOLATED_POINT%INTERPOLATION_PARAMETERS%FIELD%fibreAngleType
+    SELECT CASE(fibreAngleType)
+    CASE(COORDINATE_FIBRE_ANGLES_XI_BASED)
+      ! Standard definition of fibre field with respect to the xi directions
+      DO geometric_idx=1,NUMBER_OF_GEOMETRIC_COMPONENTS
+        DO xi_idx=1,NUMBER_OF_XI_COORDS
+          derivative_idx=PARTIAL_DERIVATIVE_FIRST_DERIVATIVE_MAP(xi_idx) !2,4,7
+          DXDXI(geometric_idx,xi_idx)=GEOMETRIC_INTERPOLATED_POINT%VALUES(geometric_idx,derivative_idx) !dx/dxi
+        END DO
+      END DO
+    CASE(COORDINATE_FIBRE_ANGLES_GLOBAL_BASED)
+      ! Fibre orientations defined with respect to global coordinate system, so
+      ! instead of starting from DXDXI, actually start with the identity matrix (DXDX)
+      DO geometric_idx=1,NUMBER_OF_GEOMETRIC_COMPONENTS
+        DXDXI(geometric_idx,geometric_idx)=1.0_DP
+      END DO
+    CASE DEFAULT
+      CALL FlagError("Invalid fibre angle type of "// &
+        & TRIM(NumberToVstring(fibreAngleType,"*",err,error))// &
+        & ".",err,error,*999)
+    END SELECT
 
     DO fibre_idx=1,NUMBER_OF_FIBRE_COMPONENTS    
       ANGLE(fibre_idx)=FIBRE_INTERPOLATED_POINT%VALUES(fibre_idx,1) !fibre, imbrication and sheet. All in radians

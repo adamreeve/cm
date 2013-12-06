@@ -1481,6 +1481,13 @@ MODULE OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_COORDINATE_RADIAL_SQUARED_INTERPOLATION_TYPE = COORDINATE_RADIAL_SQUARED_INTERPOLATION_TYPE !<r^2 radial interpolation \see OPENCMISS_CoordinateRadialInterpolations,OPENCMISS
   INTEGER(INTG), PARAMETER :: CMISS_COORDINATE_RADIAL_CUBED_INTERPOLATION_TYPE = COORDINATE_RADIAL_CUBED_INTERPOLATION_TYPE !<r^3 radial interpolation \see OPENCMISS_CoordinateRadialInterpolations,OPENCMISS
   !>@}
+  !> \addtogroup OPENCMISS_CoordinateFibreAngleTypes OPENCMISS::Coordinate::FibreAngleTypes
+  !> \brief The type of fibre angles for a fibre field
+  !> \see OPENCMISS::Coordinate,OPENCMISS
+  !>@{
+  INTEGER(INTG), PARAMETER :: CMISS_COORDINATE_FIBRE_ANGLES_XI_BASED = COORDINATE_FIBRE_ANGLES_XI_BASED !<Fibre angles are with respect to xi directions \see OPENCMISS_CoordinateFibreAngleTypes,OPENCMISS
+  INTEGER(INTG), PARAMETER :: CMISS_COORDINATE_FIBRE_ANGLES_GLOBAL_BASED = COORDINATE_FIBRE_ANGLES_GLOBAL_BASED !<Fibre angles are with respect to global coordinate directions \see OPENCMISS_CoordinateFibreAngleTypes,OPENCMISS
+  !>@}
   !>@}
 
   !Module types
@@ -1585,6 +1592,8 @@ MODULE OPENCMISS
 
   PUBLIC CMISS_COORDINATE_NO_RADIAL_INTERPOLATION_TYPE,CMISS_COORDINATE_RADIAL_INTERPOLATION_TYPE, &
     & CMISS_COORDINATE_RADIAL_SQUARED_INTERPOLATION_TYPE,CMISS_COORDINATE_RADIAL_CUBED_INTERPOLATION_TYPE
+
+  PUBLIC CMISS_COORDINATE_FIBRE_ANGLES_XI_BASED,CMISS_COORDINATE_FIBRE_ANGLES_GLOBAL_BASED
 
   PUBLIC CMISSCoordinateSystem_CreateFinish,CMISSCoordinateSystem_CreateStart
 
@@ -3422,6 +3431,12 @@ MODULE OPENCMISS
     MODULE PROCEDURE CMISSField_DimensionSetObj
   END INTERFACE !CMISSField_DimensionSet
 
+  !>Sets/changes the field fibre angle type for a fibre field
+  INTERFACE CMISSField_FibreAngleTypeSet
+    MODULE PROCEDURE CMISSField_FibreAngleTypeSetNumber
+    MODULE PROCEDURE CMISSField_FibreAngleTypeSetObj
+  END INTERFACE !CMISSField_FibreAngleTypeSet
+
   !>Returns the geometric field for a field.
   INTERFACE CMISSField_GeometricFieldGet
     MODULE PROCEDURE CMISSField_GeometricFieldGetNumber
@@ -3884,6 +3899,8 @@ MODULE OPENCMISS
   PUBLIC CMISSField_Destroy
 
   PUBLIC CMISSField_DimensionGet,CMISSField_DimensionSet
+
+  PUBLIC CMISSField_FibreAngleTypeSet
 
   PUBLIC CMISSField_GeometricFieldGet,CMISSField_GeometricFieldSet
 
@@ -27250,6 +27267,75 @@ CONTAINS
   !================================================================================================================================
   !
 
+  !>Sets/changes the field fibre angle type for a fibre field
+  SUBROUTINE CMISSField_FibreAngleTypeSetNumber(regionUserNumber,fieldUserNumber,fibreAngleType,err)
+
+    !Argument variables
+    INTEGER(INTG), INTENT(IN) :: regionUserNumber !<The user number of the region containing the field to set the fibre angle type for.
+    INTEGER(INTG), INTENT(IN) :: fieldUserNumber !<The user number of the fibre field to set the fibre angle type for.
+    INTEGER(INTG), INTENT(IN) :: fibreAngleType !<The fibre angle type to set. \see OPENCMISS_CoordinateFibreAngleTypes
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+    !Local variables
+    TYPE(FIELD_TYPE), POINTER :: field
+    TYPE(REGION_TYPE), POINTER :: region
+    TYPE(VARYING_STRING) :: localError
+
+    CALL Enters("CMISSField_FibreAngleTypeSetNumber",err,error,*999)
+
+    NULLIFY(region)
+    NULLIFY(field)
+    CALL REGION_USER_NUMBER_FIND(regionUserNumber,region,err,error,*999)
+    IF(ASSOCIATED(region)) THEN
+      CALL FIELD_USER_NUMBER_FIND(fieldUserNumber,region,field,err,error,*999)
+      IF(ASSOCIATED(field)) THEN
+        CALL Field_FibreAngleTypeSet(field,fibreAngleType,err,error,*999)
+      ELSE
+        localError="A field with an user number of "//TRIM(NumberToVstring(fieldUserNumber,"*",err,error))// &
+          & " does not exist on region number "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//"."
+        CALL FlagError(localError,err,error,*999)
+      END IF
+    ELSE
+      localError="A region with an user number of "//TRIM(NumberToVstring(regionUserNumber,"*",err,error))//" does not exist."
+      CALL FlagError(localError,err,error,*999)
+    END IF
+
+    CALL Exits("CMISSField_FibreAngleTypeSetNumber")
+    RETURN
+999 CALL Errors("CMISSField_FibreAngleTypeSetNumber",err,error)
+    CALL Exits("CMISSField_FibreAngleTypeSetNumber")
+    CALL CmissHandleError(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSField_FibreAngleTypeSetNumber
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Sets/changes the field fibre angle type for a fibre field
+  SUBROUTINE CMISSField_FibreAngleTypeSetObj(field,fibreAngleType,err)
+
+    !Argument variables
+    TYPE(CMISSFieldType), INTENT(INOUT) :: field !<The fibre field to set the fibre angle type for.
+    INTEGER(INTG), INTENT(IN) :: fibreAngleType !<The fibre angle type to set. \see OPENCMISS_CoordinateFibreAngleTypes
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+
+    CALL Enters("CMISSField_FibreAngleTypeSetObj",err,error,*999)
+
+    CALL Field_FibreAngleTypeSet(field%field,fibreAngleType,err,error,*999)
+
+    CALL Exits("CMISSField_FibreAngleTypeSetObj")
+    RETURN
+999 CALL Errors("CMISSField_FibreAngleTypeSetObj",err,error)
+    CALL Exits("CMISSField_FibreAngleTypeSetObj")
+    CALL CmissHandleError(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSField_FibreAngleTypeSetObj
+
+  !
+  !================================================================================================================================
+  !
   !>Returns the geometric field for a field identified by a user number.
   SUBROUTINE CMISSField_GeometricFieldGetNumber(regionUserNumber,fieldUserNumber,geometricFieldUserNumber,err)
 
