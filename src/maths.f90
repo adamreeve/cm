@@ -145,7 +145,12 @@ MODULE MATHS
     MODULE PROCEDURE MATRIX_PRODUCT_SP
     MODULE PROCEDURE MATRIX_PRODUCT_DP
   END INTERFACE !MATRIX_PRODUCT
-  
+
+  !>Calculates the double contraction of two matrices
+  INTERFACE MatrixDoubleContraction
+    MODULE PROCEDURE MatrixDoubleContractionDp
+  END INTERFACE MatrixDoubleContraction
+
   !>Returns the transpose of a matrix A in AT.
   INTERFACE MATRIX_TRANSPOSE
     MODULE PROCEDURE MATRIX_TRANSPOSE_SP
@@ -177,7 +182,7 @@ MODULE MATHS
   END INTERFACE !COTH
 
   PUBLIC CROSS_PRODUCT,D_CROSS_PRODUCT,DETERMINANT,EIGENVALUE,EIGENVECTOR,INVERT,L2NORM,MATRIX_PRODUCT, &
-    & MATRIX_TRANSPOSE,NORMALISE,NORM_CROSS_PRODUCT,SOLVE_SMALL_LINEAR_SYSTEM,COTH
+    & MatrixDoubleContraction,MATRIX_TRANSPOSE,NORMALISE,NORM_CROSS_PRODUCT,SOLVE_SMALL_LINEAR_SYSTEM,COTH
   
   
 CONTAINS
@@ -1626,8 +1631,8 @@ CONTAINS
     !Local variables
         
     CALL ENTERS("MATRIX_PRODUCT_DP",ERR,ERROR,*999)
-    
-   IF(SIZE(A,2)==SIZE(B,1).AND.SIZE(A,1)==SIZE(C,1).AND.SIZE(B,2)==SIZE(C,2)) THEN
+
+    IF(SIZE(A,2)==SIZE(B,1).AND.SIZE(A,1)==SIZE(C,1).AND.SIZE(B,2)==SIZE(C,2)) THEN
       SELECT CASE(SIZE(A,1))
       CASE(1)
         C(1,1)=A(1,1)*B(1,1)
@@ -1659,6 +1664,42 @@ CONTAINS
     CALL EXITS("MATRIX_PRODUCT_DP")
     RETURN 1
   END SUBROUTINE MATRIX_PRODUCT_DP
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Calculates the double contraction A:B of two double precision matrices
+  SUBROUTINE MatrixDoubleContractionDp(A,B,contraction,err,error,*)
+
+    !Argument variables
+    REAL(DP), INTENT(IN) :: A(:,:) !<The A matrix
+    REAL(DP), INTENT(IN) :: B(:,:) !<The B matrix
+    REAL(DP), INTENT(OUT) :: contraction !<On exit, the double contraction A:B
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+    !Local variables
+    INTEGER(INTG) :: i, j
+
+    CALL Enters("MatrixDoubleContractionDp",err,error,*999)
+
+    IF(SIZE(A,1)==SIZE(B,1).AND.SIZE(A,2)==SIZE(B,2)) THEN
+      contraction=0.0_DP
+      DO i=1,SIZE(A,1)
+        DO j=1,SIZE(A,2)
+          contraction=contraction+A(i,j)*B(i,j)
+        END DO
+      END DO
+    ELSE
+      CALL FlagError("Matrix sizes do not match.",err,error,*999)
+    ENDIF
+
+    CALL Exits("MatrixDoubleContractionDp")
+    RETURN
+999 CALL Errors("MatrixDoubleContractionDp",err,error)
+    CALL Exits("MatrixDoubleContractionDp")
+    RETURN 1
+  END SUBROUTINE MatrixDoubleContractionDp
 
   !
   !================================================================================================================================

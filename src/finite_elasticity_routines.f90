@@ -2166,7 +2166,7 @@ CONTAINS
     REAL(DP) :: AZL(3,3),AZU(3,3),DZDNUT(3,3),PIOLA_TENSOR(3,3),E(3,3),P,IDENTITY(3,3)
     REAL(DP) :: DZDNUI(3,3),DZDNUIT(3,3)
     REAL(DP) :: I1,I2,I3,J1,J2,added_fluid_vol    !Invariants, if needed
-    REAL(DP) :: TEMP(3,3),TEMPTERM  !Temporary variables
+    REAL(DP) :: TEMP(3,3),TEMP2(3,3),TEMPTERM  !Temporary variables
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: FIELD_VARIABLE
     REAL(DP), DIMENSION (:), POINTER :: C !Parameters for constitutive laws
@@ -2378,18 +2378,23 @@ CONTAINS
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
       ! Poroelastic constitutive relation based on Guccione relation
       ! Form of constitutive model is:
-      ! W=c1/2 (e^Q - 1) + K(J - 1 - ln(J))
+      ! W_hyp=c1/2 (e^Q - 1) + K(J - 1 - ln(J))
       ! where Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
       ! with E expressed in fibre coordinates
+      ! Psi = W_hyp + W_bulk((J - phi) * (1 - phi_0) / (1 - phi_0 + (I-B):E))
+      ! PK2 = 2 dW_hyp/dC - p(JC^-T - p(J-phi) (I-B)/(1-phi_0-(I-B):E))
+      !     = 2 dW_hyp/dC - p(JC^-T - p(1-phi_0) (I-B)/(1-phi_0-(I-B):E))
       ! c1 = C(1)
       ! c2 = C(2)
       ! c3 = C(3)
       ! c4 = C(4)
       ! c5 = C(5)
       ! K = C(6)
-      ! B(11, 12, 13, 22, 23, 33) = C(7 to 12)
+      ! phi_0 = C(7)
+      ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
 
-      TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
+      TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
+          & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
           & C(5)*2.0_DP*(E(1,2)**2+E(1,3)**2))
       PIOLA_TENSOR(1,1)=(C(2)+C(3)*E(1,1))*TEMPTERM
       PIOLA_TENSOR(1,2)=C(5)*E(1,2)*TEMPTERM
@@ -2401,18 +2406,25 @@ CONTAINS
       PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
       PIOLA_TENSOR(3,3)=(C(2)+C(4)*E(3,3))*TEMPTERM
 
-      B(1,:) = [C(7), C(8), C(9)]
-      B(2,:) = [C(8), C(10), C(11)]
-      B(3,:) = [C(9), C(11), C(12)]
-      p0=0.0_DP
-
       !Add bulk-modulus term
       PIOLA_TENSOR=PIOLA_TENSOR+C(6)*(Jznu - 1.0_DP)*AZU
+
       !Account for non-zero hydrostatic pressure offset:
-      CALL INVERT(DZDNU,DZDNUI,TEMPTERM,ERR,ERROR,*999)
-      CALL MATRIX_TRANSPOSE(DZDNUI,DZDNUIT,ERR,ERROR,*999)
+      p0=C(1)*C(2)
       PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
-      PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*B
+
+      !Add fluid pressure terms
+      B(1,:) = [C(8), C(9), C(10)]
+      B(2,:) = [C(9), C(11), C(12)]
+      B(3,:) = [C(10), C(12), C(13)]
+
+      !Standard effective stress formulation:
+      !PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
+
+      !Anisotropic pressure effect:
+      CALL MatrixDoubleContraction(IDENTITY-B,E,TEMPTERM,ERR,ERROR,*999)
+      PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
+        & Jznu*AZU-(1.0_DP-C(7))*(IDENTITY-B)/(1.0_DP-C(7)+TEMPTERM))
 
     CASE(EQUATIONS_SET_ELASTICITY_EXP_SQUARED_SUBTYPE)
       ! W = (c1 / 4 c2) * (exp(c2 (I1 - 3)^2) - 1)
@@ -4902,7 +4914,7 @@ CONTAINS
                 NUMBER_OF_COMPONENTS = 15
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
-                NUMBER_OF_COMPONENTS = 12
+                NUMBER_OF_COMPONENTS = 13
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_EXP_SQ_ORTHO_SUBTYPE)
                 NUMBER_OF_COMPONENTS = 9
