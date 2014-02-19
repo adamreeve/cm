@@ -2384,9 +2384,10 @@ CONTAINS
       ! Poroelastic constitutive relation based on Mooney-Rivlin relation
       ! Form of constitutive model is:
       ! W_hyp=c1(I1 - 3) + c2(I2 - 3) + K(J - 1 - ln(J))
-      ! Psi = W_hyp + W_bulk((J - phi) * (1 - phi_0) / (1 - phi_0 + (I-B):E))
-      ! PK2 = 2 dW_hyp/dC - p(JC^-T - p(J-phi) (I-B)/(1-phi_0-(I-B):E))
-      !     = 2 dW_hyp/dC - p(JC^-T - p(1-phi_0) (I-B)/(1-phi_0-(I-B):E))
+      ! Psi = W_hyp + W_bulk((J - phi) * 1 / (1 + A:E))
+      ! PK2 = 2 dW_hyp/dC - p(JC^-T - p(J-phi) A/(1+A:E))
+      !     = 2 dW_hyp/dC - p(JC^-T - p(1-phi_0) A/(1+A:E))
+      ! A = (I - B) / (1 - phi_0)
       ! c1 = C(1)
       ! c2 = C(2)
       ! K = C(3)
@@ -2409,9 +2410,10 @@ CONTAINS
       B(3,:) = [C(7), C(9), C(10)]
 
       !Anisotropic pressure effect:
+      TEMP=(IDENTITY-B)/(1.0_DP-C(7))
       CALL MatrixDoubleContraction(IDENTITY-B,E,TEMPTERM,ERR,ERROR,*999)
       PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
-        & Jznu*AZU-(1.0_DP-C(4))*(IDENTITY-B)/(1.0_DP-C(4)+TEMPTERM))
+        & Jznu*AZU-(1.0_DP-C(4))*TEMP/(1.0_DP+TEMPTERM))
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
       ! Poroelastic constitutive relation based on Guccione relation
@@ -2419,9 +2421,10 @@ CONTAINS
       ! W_hyp=c1/2 (e^Q - 1) + K(J - 1 - ln(J))
       ! where Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
       ! with E expressed in fibre coordinates
-      ! Psi = W_hyp + W_bulk((J - phi) * (1 - phi_0) / (1 - phi_0 + (I-B):E))
-      ! PK2 = 2 dW_hyp/dC - p(JC^-T - p(J-phi) (I-B)/(1-phi_0-(I-B):E))
-      !     = 2 dW_hyp/dC - p(JC^-T - p(1-phi_0) (I-B)/(1-phi_0-(I-B):E))
+      ! Psi = W_hyp + W_bulk((J - phi) * 1 / (1 + A:E))
+      ! PK2 = 2 dW_hyp/dC - p(JC^-T - p(J-phi) A/(1+A:E))
+      !     = 2 dW_hyp/dC - p(JC^-T - p(1-phi_0) A/(1+A:E))
+      ! A = (I - B) / (1 - phi_0)
       ! c1 = C(1)
       ! c2 = C(2)
       ! c3 = C(3)
@@ -2460,9 +2463,10 @@ CONTAINS
       !PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
 
       !Anisotropic pressure effect:
-      CALL MatrixDoubleContraction(IDENTITY-B,E,TEMPTERM,ERR,ERROR,*999)
+      TEMP=(IDENTITY-B)/(1.0_DP-C(7))
+      CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
       PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
-        & Jznu*AZU-(1.0_DP-C(7))*(IDENTITY-B)/(1.0_DP-C(7)+TEMPTERM))
+        & Jznu*AZU-(1.0_DP-C(7))*TEMP/(1.0_DP+TEMPTERM))
 
     CASE(EQUATIONS_SET_ELASTICITY_EXP_SQUARED_SUBTYPE)
       ! W = (c1 / 4 c2) * (exp(c2 (I1 - 3)^2) - 1)
