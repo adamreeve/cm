@@ -2421,9 +2421,8 @@ CONTAINS
       ! W_hyp=c1/2 (e^Q - 1) + K(J - 1 - ln(J))
       ! where Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
       ! with E expressed in fibre coordinates
-      ! Psi = W_hyp + W_bulk((J - phi) * 1 / (1 + A:E))
-      ! PK2 = 2 dW_hyp/dC - p(JC^-T - p(J-phi) A/(1+A:E))
-      !     = 2 dW_hyp/dC - p(JC^-T - p(1-phi_0) A/(1+A:E))
+      ! Psi = W_hyp + W_bulk((1/Kv)(1-A:E)J - phi)
+      ! PK2 = 2 dW_hyp/dC - p(1/Kv)((1-A:E)JC^-T - JA)
       ! A = (I - B) / (1 - phi_0)
       ! c1 = C(1)
       ! c2 = C(2)
@@ -2431,7 +2430,7 @@ CONTAINS
       ! c4 = C(4)
       ! c5 = C(5)
       ! K = C(6)
-      ! phi_0 = C(7)
+      ! K_v = C(7)
       ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
 
       TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
@@ -2463,10 +2462,10 @@ CONTAINS
       !PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
 
       !Anisotropic pressure effect:
-      TEMP=(IDENTITY-B)/(1.0_DP-C(7))
+      TEMP=(IDENTITY-B)
       CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
       PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
-        & Jznu*AZU-(1.0_DP-C(7))*TEMP/(1.0_DP+TEMPTERM))
+        & (1.0_DP/C(7))*((1.0_DP-TEMPTERM)*Jznu*AZU-Jznu*TEMP))
 
     CASE(EQUATIONS_SET_ELASTICITY_EXP_SQUARED_SUBTYPE)
       ! W = (c1 / 4 c2) * (exp(c2 (I1 - 3)^2) - 1)
