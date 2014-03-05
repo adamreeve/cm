@@ -2418,12 +2418,14 @@ CONTAINS
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
       ! Poroelastic constitutive relation based on Guccione relation
       ! Form of constitutive model is:
-      ! W_hyp=c1/2 (e^Q - 1) + K(J - 1 - ln(J))
+      ! Psi = W_hyp(E) + W_bulk(phi_s') + W_ves(E)
+      ! phi_s' = (1 - A:E) J - phi
+      ! W_hyp = c1/2 (e^Q - 1) + K(J - 1 - ln(J))
       ! where Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
       ! with E expressed in fibre coordinates
-      ! Psi = W_hyp + W_bulk((1/Kv)(1-A:E)J - phi)
-      ! PK2 = 2 dW_hyp/dC - p(1/Kv)((1-A:E)JC^-T - JA)
-      ! A = (I - B) / (1 - phi_0)
+      ! W_ves = K_v (J - 1) B:E
+      ! PK2 = 2 dW_hyp/dC - p((1-A:E)JC^-T - JA) + dW_ves/dC
+      ! A = (I - B)
       ! c1 = C(1)
       ! c2 = C(2)
       ! c3 = C(3)
@@ -2465,7 +2467,11 @@ CONTAINS
       TEMP=(IDENTITY-B)
       CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
       PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
-        & (1.0_DP/C(7))*((1.0_DP-TEMPTERM)*Jznu*AZU-Jznu*TEMP))
+        & ((1.0_DP-TEMPTERM)*Jznu*AZU-Jznu*TEMP))
+
+      !Vessel inflation term, W_ves = K_v (J - 1) B:E
+      CALL MatrixDoubleContraction(B,E,TEMPTERM,ERR,ERROR,*999)
+      PIOLA_TENSOR=PIOLA_TENSOR+C(7)*((Jznu-1.0_DP)*B+TEMPTERM*Jznu*AZU)
 
     CASE(EQUATIONS_SET_ELASTICITY_EXP_SQUARED_SUBTYPE)
       ! W = (c1 / 4 c2) * (exp(c2 (I1 - 3)^2) - 1)
