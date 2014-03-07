@@ -2171,7 +2171,7 @@ CONTAINS
     REAL(DP) :: AZL(3,3),AZU(3,3),DZDNUT(3,3),PIOLA_TENSOR(3,3),E(3,3),P,IDENTITY(3,3)
     REAL(DP) :: DZDNUI(3,3),DZDNUIT(3,3)
     REAL(DP) :: I1,I2,I3,J1,J2,added_fluid_vol    !Invariants, if needed
-    REAL(DP) :: TEMP(3,3),TEMP2(3,3),TEMPTERM  !Temporary variables
+    REAL(DP) :: TEMP(3,3),TEMP2(3,3),TEMPTERM,TEMPTERM2  !Temporary variables
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: FIELD_VARIABLE
     REAL(DP), DIMENSION (:), POINTER :: C !Parameters for constitutive laws
@@ -2455,23 +2455,103 @@ CONTAINS
       p0=C(1)*C(2)
       PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
 
-      !Add fluid pressure terms
+      ! Pressure effect:
+      !=================
+
       B(1,:) = [C(8), C(9), C(10)]
       B(2,:) = [C(9), C(11), C(12)]
       B(3,:) = [C(10), C(12), C(13)]
 
-      !Standard effective stress formulation:
-      !PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
+      SELECT CASE(4)
+      CASE(1)
+        !Standard effective stress formulation:
+        PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
 
-      !Anisotropic pressure effect:
-      TEMP=(IDENTITY-B)
-      CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
-      PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
-        & ((1.0_DP-TEMPTERM)*Jznu*AZU-Jznu*TEMP))
+      CASE(2)
+        ! W^bulk = W^bulk((1 - A:E)J - phi)
+        TEMP=(IDENTITY-B)
+        CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+        PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
+          & ((1.0_DP-TEMPTERM)*Jznu*AZU-Jznu*TEMP))
 
-      !Vessel inflation term, W_ves = K_v (J - 1) B:E
-      CALL MatrixDoubleContraction(B,E,TEMPTERM,ERR,ERROR,*999)
-      PIOLA_TENSOR=PIOLA_TENSOR+C(7)*((Jznu-1.0_DP)*B+TEMPTERM*Jznu*AZU)
+      CASE(3)
+        ! W^bulk = W^bulk((J - phi)(1/(1+A:E)))
+        TEMP=(IDENTITY-B)
+        CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+        PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*( &
+          & Jznu*AZU-(1.0_DP-0.2_DP)*TEMP/(1.0_DP+TEMPTERM))
+      CASE(4)
+        ! W^bulk = W^bulk((J - phi)(1/(1+A:E)))
+        ! W^ves = (Kv/2)(phi - phi0)^2
+        TEMPTERM2=C(7)*(Jznu-1.0_DP)
+        P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
+        TEMP=(IDENTITY-B)
+        CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+        PIOLA_TENSOR=PIOLA_TENSOR-(P-TEMPTERM2)*( &
+          & Jznu*AZU-(1.0_DP-0.2_DP)*TEMP/(1.0_DP+TEMPTERM))
+      CASE(5)
+        ! W^bulk = W^bulk(J - phi)
+        ! W^ves = (Kv/2)(phi - phi0)^2 (B:E)
+        TEMP=(IDENTITY-B)
+        CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+        TEMPTERM2=C(7)*(Jznu-1.0_DP)*TEMPTERM
+        P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
+        PIOLA_TENSOR=PIOLA_TENSOR-(P-TEMPTERM2)*Jznu*AZU
+        PIOLA_TENSOR=PIOLA_TENSOR+(C(7)/2.0_DP)*((Jznu-1.0_DP)**2)*TEMP
+      END SELECT
+
+      ! Vesel inflation term
+      !=====================
+
+      SELECT CASE(0)
+      CASE(1)
+        ! W_ves = K_v (J - 1 - ln(J)) B:E
+        CALL MatrixDoubleContraction(B,E,TEMPTERM,ERR,ERROR,*999)
+        PIOLA_TENSOR=PIOLA_TENSOR+C(7)*((Jznu-1.0_DP)*AZU*TEMPTERM+(Jznu-1.0_DP-LOG(Jznu))*TEMP)
+
+      CASE(2)
+        ! W_ves = K_v (J - 1 - ln(J)) (B:E)**2
+        CALL MatrixDoubleContraction(B,E,TEMPTERM,ERR,ERROR,*999)
+        TEMP=2.0_DP*TEMPTERM*B
+        TEMPTERM=TEMPTERM**2
+        PIOLA_TENSOR=PIOLA_TENSOR+C(7)*((Jznu-1.0_DP)*AZU*TEMPTERM+(Jznu-1.0_DP-LOG(Jznu))*TEMP)
+
+      CASE(3)
+        ! W_ves = K_v (J - 1 - ln(J)) B:(E.*E)
+        TEMPTERM=0.0_DP
+        DO i=1,3
+          DO j=1,3
+            TEMPTERM=TEMPTERM+B(i,j)*E(i,j)*E(i,j)
+          END DO
+        END DO
+        TEMP=2.0_DP*E*B
+        PIOLA_TENSOR=PIOLA_TENSOR+C(7)*((Jznu-1.0_DP)*AZU*TEMPTERM+(Jznu-1.0_DP-LOG(Jznu))*TEMP)
+
+      CASE(4)
+        ! W_ves = K_v (J - 1 - ln(J)) B:(E.*H(E)) (Where H = Heaviside step function)
+        TEMPTERM=0.0_DP
+        TEMP=0.0_DP
+        DO i=1,3
+          DO j=1,3
+            IF(E(i,j)>0.0_DP) THEN
+              TEMPTERM=TEMPTERM+E(i,j)*B(i,j)
+              TEMP(i,j)=B(i,j)
+            END IF
+          END DO
+        END DO
+        PIOLA_TENSOR=PIOLA_TENSOR+C(7)*((Jznu-1.0_DP)*AZU*TEMPTERM+(Jznu-1.0_DP-LOG(Jznu))*TEMP)
+
+      CASE(5)
+        !W^ves = K_v (J - 1 - ln(J)) / (1 + A:E)
+        TEMP=(IDENTITY-B)
+        CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+        PIOLA_TENSOR=PIOLA_TENSOR+(C(7)/((1.0_DP+TEMPTERM)**2))* &
+          & ((Jznu*AZU-AZU)*(1.0_DP+TEMPTERM)-(Jznu-1.0_DP-LOG(Jznu))*TEMP)
+
+      CASE(6)
+        !W^ves = K_v B:(E:E)
+        PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(7)*B*E
+      END SELECT
 
     CASE(EQUATIONS_SET_ELASTICITY_EXP_SQUARED_SUBTYPE)
       ! W = (c1 / 4 c2) * (exp(c2 (I1 - 3)^2) - 1)
