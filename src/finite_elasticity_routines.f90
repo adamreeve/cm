@@ -2343,7 +2343,9 @@ CONTAINS
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_HOLZAPFEL_SUBTYPE)
       ! Poroelastic constitutive relation based on Holzapfel & Ogden 2009
-      ! W = a/(2*b)*exp[b*(I1-3)] + sum_(i=f,s)[a_i/(2*b_i)*(exp[b_i*(I4i-1)^2]-1)] + a_fs/(2*b_fs)*(exp[b_fs*I8fs^2]-1)
+      ! Form of constitutive model is:
+      ! Psi = W_hyp(E) + W_bulk((J - phi)f(E)) + W_ves(phi)
+      ! W_hyp(E) = a/(2*b)*exp[b*(I1-3)] + sum_(i=f,s)[a_i/(2*b_i)*(exp[b_i*(I4i-1)^2]-1)] + a_fs/(2*b_fs)*(exp[b_fs*I8fs^2]-1)
       !     + K(J - 1 - ln(J))
       ! Assume directions: fibre f_0=[1 0 0], sheet s_0=[0 1 0], (sheet) normal n_0=[0 0 1]
       ! a = C(1)
@@ -2355,11 +2357,9 @@ CONTAINS
       ! a_fs = C(7)
       ! b_fs = C(8)
       ! K = C(9)
-      ! B(11, 12, 13, 22, 23, 33) = C(10 to 15)
-      B(1,:) = [C(10), C(11), C(12)]
-      B(2,:) = [C(11), C(13), C(14)]
-      B(3,:) = [C(12), C(14), C(15)]
-      p0=C(1)
+      ! K_v = C(10)
+      ! phi_0 = C(11)
+      ! B(11, 12, 13, 22, 23, 33) = C(12 to 17)
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
       TEMPTERM=C(1)*EXP(C(2)*(I1-3.0_DP))
 
@@ -2372,13 +2372,26 @@ CONTAINS
       PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
       PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
       PIOLA_TENSOR(3,3)=TEMPTERM
+
       !Add bulk-modulus term
       PIOLA_TENSOR=PIOLA_TENSOR+C(9)*(Jznu - 1.0_DP)*AZU
+
       !Account for non-zero hydrostatic pressure offset:
-      CALL INVERT(DZDNU,DZDNUI,TEMPTERM,ERR,ERROR,*999)
-      CALL MATRIX_TRANSPOSE(DZDNUI,DZDNUIT,ERR,ERROR,*999)
+      p0=C(1)
       PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
-      PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*B
+
+      ! Pressure effect:
+      ! W^bulk = W^bulk((J - phi)(1/(1+A:E)))
+      ! W^ves = (Kv/2)(phi - phi0)^2
+      P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
+      B(1,:) = [C(12), C(13), C(14)]
+      B(2,:) = [C(13), C(15), C(16)]
+      B(3,:) = [C(14), C(16), C(17)]
+      TEMPTERM2=C(10)*(Jznu-1.0_DP)
+      TEMP=(IDENTITY-B)
+      CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+      PIOLA_TENSOR=PIOLA_TENSOR-(P-TEMPTERM2)*( &
+        & Jznu*AZU-(1.0_DP-C(11))*TEMP/(1.0_DP+TEMPTERM))
 
     CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_ANISO_MR_SUBTYPE)
       ! Poroelastic constitutive relation based on Mooney-Rivlin relation
@@ -2483,6 +2496,7 @@ CONTAINS
       CASE(4)
         ! W^bulk = W^bulk((J - phi)(1/(1+A:E)))
         ! W^ves = (Kv/2)(phi - phi0)^2
+        ! Assumes phi_0 = 0.2
         TEMPTERM2=C(7)*(Jznu-1.0_DP)
         P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
         TEMP=(IDENTITY-B)
@@ -2498,6 +2512,16 @@ CONTAINS
         P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
         PIOLA_TENSOR=PIOLA_TENSOR-(P-TEMPTERM2)*Jznu*AZU
         PIOLA_TENSOR=PIOLA_TENSOR+(C(7)/2.0_DP)*((Jznu-1.0_DP)**2)*TEMP
+      CASE(6)
+        ! W^bulk = W^bulk((1-A:E)J - phi)
+        ! W^ves = (Kv/2)(phi - phi0)^2
+        ! Assumes phi_0 = 0.2
+        TEMPTERM2=C(7)*(Jznu-1.0_DP)
+        P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
+        TEMP=(IDENTITY-B)
+        CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+        PIOLA_TENSOR=PIOLA_TENSOR-(P-TEMPTERM2)*( &
+          & ((1.0_DP-TEMPTERM)*Jznu*AZU-Jznu*TEMP))
       END SELECT
 
       ! Vesel inflation term
@@ -2767,6 +2791,59 @@ CONTAINS
       !  & - C(4)*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*AZU &
         ! middle line previously:
         !& - (Jznu - 1.0_DP + C(4))*(DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)+p0)*Jznu*AZU &
+
+    !CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_COSTA_SUBTYPE)
+    !  !Form of constitutive model is:
+    !  ! W=a/2 (e^Q - 1)
+    !  ! where Q = b_f E_ff^2 + 2b_fs E_fs^2 + 2b_fn E_fn^2 + b_ss E_ss^2 + 2b_sn E_sn^2 + b_nn E_nn^2
+    !  ! f,s,n denotes the fibre sheet and sheet-normal direction
+    !  a = C(1)
+    !  B(1,1) = C(1+1)
+    !  B(1,2) = C(1+2)
+    !  B(1,3) = C(1+3)
+    !  B(2,1) = B(1,2)
+    !  B(2,2) = C(1+4)
+    !  B(2,3) = C(1+5)
+    !  B(3,1) = B(1,3)
+    !  B(3,2) = B(2,3)
+    !  B(3,3) = C(1+6)
+    !  Q = 0.0_DP
+    !  DO i=1,3,1
+    !   DO j=1,3,1
+    !     IF (i==j) THEN
+    !          E(i,j) = 0.5_DP * (AZL(i,j)-1)
+    !     ELSE
+    !          E(i,j) = 0.5_DP * AZL(i,j)
+    !     END IF
+    !     Q = Q + B(i,j) * E(i,j) * E(i,j)
+    !   END DO
+    !  END DO
+    !  Q = exp(Q)
+    !  DO i=1,3,1
+    !   DO j=1,3,1
+    !     PIOLA_TENSOR(i,j)=a*B(i,j)*E(i,j)*Q + p*AZU(i,j)
+    !   END DO
+    !  END DO
+
+    !  !Add bulk-modulus term
+    !  PIOLA_TENSOR=PIOLA_TENSOR+C(9)*(Jznu - 1.0_DP)*AZU
+
+    !  !Account for non-zero hydrostatic pressure offset:
+    !  p0=C(1)
+    !  PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
+
+    !  ! Pressure effect:
+    !  ! W^bulk = W^bulk((J - phi)(1/(1+A:E)))
+    !  ! W^ves = (Kv/2)(phi - phi0)^2
+    !  P=DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)
+    !  B(1,:) = [C(12), C(13), C(14)]
+    !  B(2,:) = [C(13), C(15), C(16)]
+    !  B(3,:) = [C(14), C(16), C(17)]
+    !  TEMPTERM2=C(10)*(Jznu-1.0_DP)
+    !  TEMP=(IDENTITY-B)
+    !  CALL MatrixDoubleContraction(TEMP,E,TEMPTERM,ERR,ERROR,*999)
+    !  PIOLA_TENSOR=PIOLA_TENSOR-(P-TEMPTERM2)*( &
+    !    & Jznu*AZU-(1.0_DP-C(11))*TEMP/(1.0_DP+TEMPTERM))
 
     CASE(EQUATIONS_SET_POWER_VOLUME_CONSTRAINED_SUBTYPE)
       ! An isotropic power-law based relationship:
@@ -5045,7 +5122,7 @@ CONTAINS
                 NUMBER_OF_COMPONENTS = 10
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_HOLZAPFEL_SUBTYPE)
-                NUMBER_OF_COMPONENTS = 15
+                NUMBER_OF_COMPONENTS = 17
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
                 NUMBER_OF_COMPONENTS = 13
