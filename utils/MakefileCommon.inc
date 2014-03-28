@@ -127,6 +127,11 @@ ifndef OC_CELLML_ROOT
 endif
 OC_CELLML_INSTALL_DIR := $(OC_CELLML_ROOT)/$(ENVIRONMENT)$(BUILD_TYPE)$(NOMPI_TOOLCHAIN)
 
+# Allow setting the python command so that a specific python version can be used
+ifndef PYTHON
+  PYTHON := python
+endif
+
 #----------------------------------------------------------------------------------------------------------------------------------
 
 MAIN_OBJECT_DIR := $(OC_CM_GLOBAL_ROOT)/object/$(ENVIRONMENT)$(BUILD_TYPE)$(TOOLCHAIN)

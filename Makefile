@@ -270,7 +270,7 @@ MOD_FIELDML: $(FIELDML_OBJECT) $(INC_DIR)/.directory
 	cp $(OBJECT_DIR)/fieldml_types.mod $(INC_DIR)/fieldml_types.mod
 
 $(HEADER_INCLUDE) $(C_F90_SOURCE): $(SOURCE_DIR)/opencmiss.f90  $(BINDINGS_GENERATE_SCRIPT)/parse.py $(BINDINGS_GENERATE_SCRIPT)/c.py $(HEADER_DIR)/.directory
-	python $(BINDINGS_GENERATE_SCRIPT) $(OC_CM_GLOBAL_ROOT) C $(HEADER_INCLUDE) $(C_F90_SOURCE)
+	$(PYTHON) $(BINDINGS_GENERATE_SCRIPT) $(OC_CM_GLOBAL_ROOT) C $(HEADER_INCLUDE) $(C_F90_SOURCE)
 
 # Place the list of dependencies for the objects here.
 #
@@ -1820,9 +1820,12 @@ PYTHON_MODULE_SO = $(LIB_DIR)/opencmiss_pyswig$(EXE_ABI_SUFFIX)$(MT_SUFFIX)$(DEB
 PYTHON_MODULE_SO_INSTALL = $(BINDINGS_DIR)/python/opencmiss/_iron_swig.so
 PYTHON_WRAPPER = $(BINDINGS_DIR)/python/opencmiss/iron_wrap.c
 PYTHON_WRAPPER_OBJ = $(OBJECT_DIR)/opencmiss_wrap.o
-PYTHON_INCLUDES = $(shell python-config --includes)
-NUMPY_INCLUDE = $(shell python $(OC_CM_GLOBAL_ROOT)/utils/numpy_include.py)
 
+PYTHON_INCLUDES = $(shell $(PYTHON)-config --includes)
+PYTHON_DLFLAGS = $(shell $(PYTHON)-config --ldflags)
+NUMPY_INCLUDE = $(shell $(PYTHON) $(OC_CM_GLOBAL_ROOT)/utils/numpy_include.py)
+
+.PHONY: python
 python: $(PYTHON_MODULE) $(PYTHON_MODULE_SO) python_cp
 
 # Always copy this, as we might want to run "make python DEBUG=false" after
@@ -1832,11 +1835,11 @@ python_cp: $(PYTHON_MODULE_SO)
 	cp $(PYTHON_MODULE_SO) $(PYTHON_MODULE_SO_INSTALL)
 
 $(GENERATED_INTERFACE): $(BINDINGS_GENERATE_SCRIPT)/parse.py $(BINDINGS_GENERATE_SCRIPT)/swig.py $(SOURCE_DIR)/opencmiss.f90
-	python $(BINDINGS_GENERATE_SCRIPT) $(OC_CM_GLOBAL_ROOT) SWIG $@
+	$(PYTHON) $(BINDINGS_GENERATE_SCRIPT) $(OC_CM_GLOBAL_ROOT) SWIG $@
 
 $(PYTHON_MODULE): $(BINDINGS_GENERATE_SCRIPT)/parse.py $(BINDINGS_GENERATE_SCRIPT)/python.py \
 	$(SOURCE_DIR)/opencmiss.f90 $(BINDINGS_DIR)/python/extra_content.py
-	python $(BINDINGS_GENERATE_SCRIPT) $(OC_CM_GLOBAL_ROOT) Python
+	$(PYTHON) $(BINDINGS_GENERATE_SCRIPT) $(OC_CM_GLOBAL_ROOT) Python
 
 $(PYTHON_WRAPPER): $(PYTHON_INTERFACE) $(BINDINGS_DIR)/python/numpy.i $(BINDINGS_DIR)/python/numpy_extra.i $(GENERATED_INTERFACE) $(HEADER_INCLUDE)
 # Remove iron_swig.py after running SWIG as we generate our own Python wrapper code
@@ -1846,7 +1849,7 @@ $(PYTHON_WRAPPER_OBJ): $(PYTHON_WRAPPER)
 	( cd $(BINDINGS_DIR)/python && $(CC) -c $(PYTHON_WRAPPER) $(CFLAGS) $(CPPFLAGS) -I$(INC_DIR) $(PYTHON_INCLUDES) -I$(NUMPY_INCLUDE) -o $(PYTHON_WRAPPER_OBJ) )
 
 $(PYTHON_MODULE_SO): $(LIBRARY) $(PYTHON_WRAPPER_OBJ) $(OBJECTS)
-	( cd $(BINDINGS_DIR)/python && $(FC) $(PYTHON_WRAPPER_OBJ) $(OBJECTS) $(DLFLAGS) -o $(PYTHON_MODULE_SO) )
+	( cd $(BINDINGS_DIR)/python && $(FC) $(PYTHON_WRAPPER_OBJ) $(OBJECTS) $(DLFLAGS) $(PYTHON_DLFLAGS) -o $(PYTHON_MODULE_SO) )
 
 # ----------------------------------------------------------------------------
 #
@@ -1883,7 +1886,7 @@ test: main
 	@echo "Please go to http://readthedocs.org/docs/nose/ for details."
 	@echo "For detailed logfiles, go to <OPENCMISS_ROOT>/build/logs directory."
 	@echo "================================================================================================"
-	COMPILER=$(COMPILER) SIZE=${SIZE} DIR=$(DIR) ABI=${ABI} python ${OPENCMISSEXAMPLES_ROOT}/scripts/run_tests.py
+	COMPILER=$(COMPILER) SIZE=${SIZE} DIR=$(DIR) ABI=${ABI} $(PYTHON) ${OPENCMISSEXAMPLES_ROOT}/scripts/run_tests.py
 
 #-----------------------------------------------------------------------------
 
