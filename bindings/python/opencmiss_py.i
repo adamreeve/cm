@@ -4,6 +4,13 @@
 #include "stdlib.h"
 #include "opencmiss/iron.h"
 #define MAX_OUTPUT_STRING_SIZE 300
+#if PY_VERSION_HEX>=0x03000000
+  #define PyStringUnicode_Check(name) PyUnicode_Check(name)
+  #define PyStringBytes_Check(name) PyBytes_Check(name)
+#else
+  #define PyStringUnicode_Check(name) PyString_Check(name)
+  #define PyStringBytes_Check(name) PyString_Check(name)
+#endif
 %}
 
 /* Use numpy for input/output of arrays
@@ -80,12 +87,15 @@
 
 /* String input */
 %typemap(in,numinputs=1) (const int Size, const char *DummyInputString) {
-  if (!PyString_Check($input)) {
+  if (!PyStringUnicode_Check($input)) {
     PyErr_SetString(PyExc_ValueError,"Expected a string");
     return NULL;
   }
-  $1 = PyString_Size($input)+1;
-  $2 = PyString_AsString($input);
+  $2 = SWIG_Python_str_AsChar($input);
+  $1 = strlen($2) + 1;
+}
+%typemap(freearg) (const int Size, const char *DummyInputString) {
+  SWIG_Python_str_DelForPy3($2);
 }
 
 /* String output */
@@ -96,7 +106,7 @@
 %typemap(argout) (const int Size, char *DummyOutputString) {
   PyObject *output_string;
 
-  output_string = PyString_FromString($2);
+  output_string = SWIG_Python_str_FromChar($2);
   $result = SWIG_Python_AppendOutput($result,output_string);
 }
 
@@ -181,7 +191,8 @@
 }
 
 /* Input array of strings */
-%typemap(in,numinputs=1) (const int NumStrings, const int StringLength, const char *DummyStringList)(int len, int i, Py_ssize_t max_strlen, PyObject *o) {
+%typemap(in,numinputs=1) (const int NumStrings, const int StringLength, const char *DummyStringList)(
+        int len, int i, char *this_str, Py_ssize_t this_str_len, Py_ssize_t max_strlen, PyObject *o, PyObject *pyBytes) {
   max_strlen = 0;
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError,"Expected a sequence");
@@ -190,25 +201,36 @@
   len = PyObject_Length($input);
   for (i =0; i < len; i++) {
     o = PySequence_GetItem($input,i);
-    if (!PyString_Check(o)) {
+    if (!PyStringUnicode_Check(o)) {
       Py_XDECREF(o);
       PyErr_SetString(PyExc_ValueError,"Expected a sequence of strings");
       return NULL;
     }
-    if (PyString_Size(o) > max_strlen) {
-      max_strlen = PyString_Size(o);
+%#if PY_VERSION_HEX>=0x03000000
+    this_str = PyUnicode_AsUTF8AndSize(o, &this_str_len);
+%#else
+    this_str_len = PyString_Size(o);
+%#endif
+    if (this_str_len > max_strlen) {
+      max_strlen = this_str_len;
     }
     Py_DECREF(o);
   }
   max_strlen = max_strlen + 1; /* Null terminator */
   $3 = (char *) malloc(len * max_strlen * sizeof(char));
   if ($3 == NULL) {
-    PyErr_SetString(PyExc_MemoryError,"Could not allocate memory for array");
+    PyErr_SetString(PyExc_MemoryError,"Could not allocate memory for string array");
     return NULL;
   } else {
     for (i=0; i < len; i++) {
       o = PySequence_GetItem($input,i);
-      strncpy($3+i*max_strlen, PyString_AsString(o), PyString_Size(o)+1);
+%#if PY_VERSION_HEX>=0x03000000
+      this_str = PyUnicode_AsUTF8AndSize(o, &this_str_len);
+%#else
+      this_str = PyString_AsString(o);
+      this_str_len = PyString_Size(o);
+%#endif
+      memcpy($3+i*max_strlen, this_str, this_str_len+1);
       Py_DECREF(o);
     }
   }

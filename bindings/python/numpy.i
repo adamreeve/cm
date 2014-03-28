@@ -113,16 +113,19 @@
     if (py_obj == NULL          ) return "C NULL value";
     if (py_obj == Py_None       ) return "Python None" ;
     if (PyCallable_Check(py_obj)) return "callable"    ;
-    if (PyString_Check(  py_obj)) return "string"      ;
     if (PyInt_Check(     py_obj)) return "int"         ;
     if (PyFloat_Check(   py_obj)) return "float"       ;
     if (PyDict_Check(    py_obj)) return "dict"        ;
     if (PyList_Check(    py_obj)) return "list"        ;
     if (PyTuple_Check(   py_obj)) return "tuple"       ;
 %#if PY_MAJOR_VERSION < 3
+    if (PyString_Check(  py_obj)) return "string"      ;
     if (PyFile_Check(    py_obj)) return "file"        ;
     if (PyModule_Check(  py_obj)) return "module"      ;
     if (PyInstance_Check(py_obj)) return "instance"    ;
+%#else
+    if (PyBytes_Check(   py_obj)) return "bytes"       ;
+    if (PyUnicode_Check( py_obj)) return "string"      ;
 %#endif
 
     return "unkown type";
