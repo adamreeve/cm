@@ -1032,7 +1032,7 @@
       size[0] = array_size(temp_array,0);
       size[1] = array_size(temp_array,1);
     }
-    
+
     if (!require_size(temp_array, size, 2)) SWIG_fail;
 
     array[i] = (DATA_TYPE*) array_data(temp_array);
@@ -1268,7 +1268,7 @@
       size[1] = array_size(temp_array,1);
       size[2] = array_size(temp_array,2);
     }
-    
+
     if (!require_size(temp_array, size, 3)) SWIG_fail;
 
     array[i] = (DATA_TYPE*) array_data(temp_array);
@@ -1670,7 +1670,7 @@
       size[0] = array_size(temp_array,0);
       size[1] = array_size(temp_array,1);
     }
-    
+
     if (!require_size(temp_array, size, 2)) SWIG_fail;
 
     array[i] = (DATA_TYPE*) array_data(temp_array);
@@ -1855,7 +1855,7 @@
       size[1] = array_size(temp_array,1);
       size[2] = array_size(temp_array,2);
     }
-    
+
     if (!require_size(temp_array, size, 3)) SWIG_fail;
 
     array[i] = (DATA_TYPE*) array_data(temp_array);
@@ -2282,7 +2282,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(3, dims, DATA_TYPECODE, (void*)(*$1));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
   $result = SWIG_Python_AppendOutput($result,obj);
 }
 
@@ -2306,7 +2306,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(3, dims, DATA_TYPECODE, (void*)(*$4));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
   $result = SWIG_Python_AppendOutput($result,obj);
 }
 
@@ -2381,7 +2381,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(4, dims, DATA_TYPECODE, (void*)(*$1));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
   $result = SWIG_Python_AppendOutput($result,obj);
 }
 
@@ -2406,7 +2406,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(4, dims, DATA_TYPECODE, (void*)(*$5));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
   $result = SWIG_Python_AppendOutput($result,obj);
 }
 
@@ -2438,7 +2438,7 @@
 %#else
     PyObject* cap = PyCObject_FromVoidPtr((void*)(*$1), free);
 %#endif
-  
+
 %#if NPY_API_VERSION < 0x00000007
   PyArray_BASE(array) = cap;
 %#else
@@ -2472,7 +2472,7 @@
 %#else
     PyObject* cap = PyCObject_FromVoidPtr((void*)(*$1), free);
 %#endif
-  
+
 %#if NPY_API_VERSION < 0x00000007
   PyArray_BASE(array) = cap;
 %#else
@@ -2716,7 +2716,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(3, dims, DATA_TYPECODE, (void*)(*$1));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
 
 %#ifdef SWIGPY_USE_CAPSULE
     PyObject* cap = PyCapsule_New((void*)(*$1), SWIGPY_CAPSULE_NAME, free_cap);
@@ -2753,7 +2753,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(3, dims, DATA_TYPECODE, (void*)(*$4));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
 
 %#ifdef SWIGPY_USE_CAPSULE
     PyObject* cap = PyCapsule_New((void*)(*$1), SWIGPY_CAPSULE_NAME, free_cap);
@@ -2867,7 +2867,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(4, dims, DATA_TYPECODE, (void*)(*$1));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
 
 %#ifdef SWIGPY_USE_CAPSULE
     PyObject* cap = PyCapsule_New((void*)(*$1), SWIGPY_CAPSULE_NAME, free_cap);
@@ -2905,7 +2905,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(4, dims, DATA_TYPECODE, (void*)(*$5));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
 
 %#ifdef SWIGPY_USE_CAPSULE
     PyObject* cap = PyCapsule_New((void*)(*$1), SWIGPY_CAPSULE_NAME, free_cap);
@@ -3019,7 +3019,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(4, dims, DATA_TYPECODE, (void*)(*$1));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
 
 %#ifdef SWIGPY_USE_CAPSULE
     PyObject* cap = PyCapsule_New((void*)(*$1), SWIGPY_CAPSULE_NAME, free_cap);
@@ -3057,7 +3057,7 @@
   PyObject* obj = PyArray_SimpleNewFromData(4, dims, DATA_TYPECODE, (void*)(*$5));
   PyArrayObject* array = (PyArrayObject*) obj;
 
-  if (!array || require_fortran(array)) SWIG_fail;
+  if (!array || !require_fortran(array)) SWIG_fail;
 
 %#ifdef SWIGPY_USE_CAPSULE
     PyObject* cap = PyCapsule_New((void*)(*$1), SWIGPY_CAPSULE_NAME, free_cap);
