@@ -218,11 +218,11 @@ class LibrarySource(object):
         # Remove cmfe...TypesCopy routines, as these are only used within the
         # C bindings.  Also remove cmfe_GeneratedMeshSurfaceGet for now as it
         # takes an allocatable array but will be removed soon anyways.
-        self.public_subroutines = filter(
+        self.public_subroutines = list(filter(
                 lambda r:
                 not (r.name.startswith('cmfe_GeneratedMesh_SurfaceGet') or
                 r.name.endswith('TypesCopy')),
-                self.public_subroutines)
+                self.public_subroutines))
 
         self.unbound_routines = []
         for routine in self.public_subroutines:
@@ -450,7 +450,7 @@ class Interface(CodeObject):
             max_number = -1
             for routine in routine_groups[group]:
                 try:
-                    number = int(filter(str.isdigit, routine))
+                    number = int(''.join(filter(str.isdigit, routine)))
                     if number > max_number:
                         array_routine = routine
                 except ValueError:
