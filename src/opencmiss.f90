@@ -3144,6 +3144,8 @@ MODULE OPENCMISS
 
   PUBLIC CMISSEquationsSet_SpecificationGet,CMISSEquationsSet_SpecificationSet
 
+  PUBLIC CMISSEquationsSet_StrainInterpolateXi
+
   PUBLIC CMISSEquationsSet_AnalyticUserParamSet,CMISSEquationsSet_AnalyticUserParamGet
 
 !!==================================================================================================================================
@@ -25508,6 +25510,35 @@ CONTAINS
     RETURN
 
   END SUBROUTINE CMISSEquationsSet_SpecificationSetObj
+
+  !
+  !================================================================================================================================
+  !
+
+  !>Interpolates the given parameter set at a specified xi location for the specified element and
+  !>derviative and returns double precision values for a field identified by an object.
+  SUBROUTINE CMISSEquationsSet_StrainInterpolateXi(equationsSet,userElementNumber,xi,values,err)
+
+    !Argument variables
+    TYPE(CMISSEquationsSetType), INTENT(IN) :: equationsSet !<A pointer to the equations set to interpolate strain for.
+    INTEGER(INTG), INTENT(IN) :: userElementNumber !<The user element number of the field to interpolate.
+    REAL(DP), INTENT(IN) :: xi(:) !<The element xi to interpolate the field at.
+    REAL(DP), INTENT(OUT) :: values(6) !<The interpolated strain tensor values.
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code.
+
+    CALL Enters("CMISSEquationsSet_StrainInterpolateXi",err,error,*999)
+
+    CALL EquationsSet_StrainInterpolateXi(equationsSet%equations_set,userElementNumber,xi, &
+      & values,err,error,*999)
+
+    CALL Exits("CMISSEquationsSet_StrainInterpolateXi")
+    RETURN
+999 CALL Errors("CMISSEquationsSet_StrainInterpolateXi",err,error)
+    CALL Exits("CMISSEquationsSet_StrainInterpolateXi")
+    CALL CmissHandleError(err,error)
+    RETURN
+
+  END SUBROUTINE CMISSEquationsSet_StrainInterpolateXi
 
 !!==================================================================================================================================
 !!
