@@ -11,6 +11,11 @@
   #define PyStringUnicode_Check(name) PyString_Check(name)
   #define PyStringBytes_Check(name) PyString_Check(name)
 #endif
+#ifndef SWIG_Python_str_DelForPy3
+/* Note that using SWIG < 1.3.39 which doesn't have this macro
+   will result in memory leaks when using Python 3. */
+  #define SWIG_Python_str_DelForPy3(x) 
+#endif
 %}
 
 /* Use numpy for input/output of arrays
