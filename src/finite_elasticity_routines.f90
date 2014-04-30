@@ -2302,7 +2302,7 @@ CONTAINS
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
     INTEGER(INTG) :: EQUATIONS_SET_SUBTYPE !<The equation subtype
-    INTEGER(INTG) :: i,j,PRESSURE_COMPONENT,dof_idx
+    INTEGER(INTG) :: i,j,k,PRESSURE_COMPONENT,dof_idx
     REAL(DP) :: AZL(3,3),AZU(3,3),DZDNUT(3,3),PIOLA_TENSOR(3,3),E(3,3),P,IDENTITY(3,3)
     REAL(DP) :: DZDNUI(3,3),DZDNUIT(3,3)
     REAL(DP) :: I1,I2,I3,J1,J2,added_fluid_vol    !Invariants, if needed
@@ -2310,7 +2310,7 @@ CONTAINS
     TYPE(VARYING_STRING) :: LOCAL_ERROR
     TYPE(FIELD_VARIABLE_TYPE), POINTER :: FIELD_VARIABLE
     REAL(DP), DIMENSION (:), POINTER :: C !Parameters for constitutive laws
-    REAL(DP) :: a, B(3,3), Q !Parameters for orthotropic laws
+    REAL(DP) :: a, B(3,3), KP(3), Q !Parameters for orthotropic laws
     REAL(DP) :: ffact,dfdJfact,p0 !coupled elasticity Darcy
     INTEGER(INTG) :: DARCY_MASS_INCREASE_ENTRY !position of mass-increase entry in dependent-variable vector
     REAL(DP) :: VALUE
@@ -2583,34 +2583,178 @@ CONTAINS
       ! K_v = C(7)
       ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
 
-      TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
-          & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
-          & C(5)*2.0_DP*(E(1,2)**2+E(1,3)**2))
-      PIOLA_TENSOR(1,1)=(C(2)+C(3)*E(1,1))*TEMPTERM
-      PIOLA_TENSOR(1,2)=C(5)*E(1,2)*TEMPTERM
-      PIOLA_TENSOR(1,3)=C(5)*E(1,3)*TEMPTERM
-      PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
-      PIOLA_TENSOR(2,2)=(C(2)+C(4)*E(2,2))*TEMPTERM
-      PIOLA_TENSOR(2,3)=C(4)*E(2,3)*TEMPTERM
-      PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
-      PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
-      PIOLA_TENSOR(3,3)=(C(2)+C(4)*E(3,3))*TEMPTERM
+      SELECT CASE(1)
+      CASE(1) ! Guccione
+        TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
+            & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
+            & C(5)*2.0_DP*(E(1,2)**2+E(1,3)**2))
+        PIOLA_TENSOR(1,1)=(C(2)+C(3)*E(1,1))*TEMPTERM
+        PIOLA_TENSOR(1,2)=C(5)*E(1,2)*TEMPTERM
+        PIOLA_TENSOR(1,3)=C(5)*E(1,3)*TEMPTERM
+        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
+        PIOLA_TENSOR(2,2)=(C(2)+C(4)*E(2,2))*TEMPTERM
+        PIOLA_TENSOR(2,3)=C(4)*E(2,3)*TEMPTERM
+        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
+        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
+        PIOLA_TENSOR(3,3)=(C(2)+C(4)*E(3,3))*TEMPTERM
 
-      !Add bulk-modulus term
-      PIOLA_TENSOR=PIOLA_TENSOR+C(6)*(Jznu - 1.0_DP)*AZU
+        !Account for non-zero hydrostatic pressure offset:
+        p0=C(1)*C(2)
+        PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
 
-      !Account for non-zero hydrostatic pressure offset:
-      p0=C(1)*C(2)
-      PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
+      CASE(2) ! Separated exponential
+        !W_hyp(E) = c1 e^(c2 E11) + c1 e^(c2 E22) + c1 e^(c2 E33)
+        PIOLA_TENSOR=0.0_DP
+        PIOLA_TENSOR(1,1)=C(1)*C(2)*EXP(C(2)*E(1,1))
+        PIOLA_TENSOR(2,2)=C(1)*C(2)*EXP(C(2)*E(2,2))
+        PIOLA_TENSOR(3,3)=C(1)*C(2)*EXP(C(2)*E(3,3))
 
-      ! Pressure effect:
-      !=================
+        !Account for non-zero hydrostatic pressure offset:
+        p0=C(1)*C(2)
+        PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
+      CASE(3) ! Exponential in modified first invariant
+        !W_hyp(E) = c1 (e^(c2(J1 - 3)) - 1)
+        !J1=J^(-2/3) I1
+        !dJ1/dC = J^(-2/3) * (I - (1/3) I1 C^-T)
+        I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
+        TEMPTERM=Jznu**(-2.0_DP/3.0_DP) * I1
+        PIOLA_TENSOR=C(1)*C(2)*EXP(C(2)*(TEMPTERM-3.0_DP))* &
+          & (Jznu**(-2.0_DP/3.0_DP))*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU)
+      END SELECT
 
       B(1,:) = [C(8), C(9), C(10)]
       B(2,:) = [C(9), C(11), C(12)]
       B(3,:) = [C(10), C(12), C(13)]
 
-      SELECT CASE(4)
+      !Add bulk-modulus term
+      SELECT CASE(13)
+      CASE(1)
+        ! Standard K(J - 1 - ln(J)) term
+        PIOLA_TENSOR=PIOLA_TENSOR+C(6)*(Jznu - 1.0_DP)*AZU
+      CASE(2)
+        ! (J - 1)^2 (K + b1 C11 + b2 (C22 + C33))
+        PIOLA_TENSOR = PIOLA_TENSOR + &
+          & 2.0_DP*(Jznu - 1.0_DP)*Jznu*AZU*( &
+          & C(6) + B(1,1)*AZL(1,1) + B(2,2)*(AZL(2,2) + AZL(3,3))) + &
+          & ((Jznu - 1.0_DP)**2)*2.0_DP*B
+      CASE(3)
+        ! (J - 1 - ln(J)) (K + b1 C11 + b2 (C22 + C33))
+        PIOLA_TENSOR = PIOLA_TENSOR + &
+          & (1.0_DP - (1.0_DP/Jznu))*Jznu*AZU*( &
+          & C(6) + B(1,1)*AZL(1,1) + B(2,2)*(AZL(2,2) + AZL(3,3))) + &
+          & (Jznu - 1.0_DP - log(Jznu))*2.0_DP*B
+      CASE(4)
+        ! K ((1 + b11 E11) (1 + b22 E22) (1 + b33 E33) - 3)
+        PIOLA_TENSOR(1,1) = PIOLA_TENSOR(1,1) + C(6)*B(1,1)*(1.0_DP + B(2,2)*E(2,2))*(1.0_DP + B(3,3)*E(3,3))
+        PIOLA_TENSOR(2,2) = PIOLA_TENSOR(2,2) + C(6)*B(2,2)*(1.0_DP + B(1,1)*E(1,1))*(1.0_DP + B(3,3)*E(3,3))
+        PIOLA_TENSOR(3,3) = PIOLA_TENSOR(3,3) + C(6)*B(3,3)*(1.0_DP + B(1,1)*E(1,1))*(1.0_DP + B(2,2)*E(2,2))
+      CASE(5)
+        ! b1 (1 + E11) E22 E33 + b2 (E11 (1 + E22) E33) + b3 (E11 E22 (1 + E33))
+        PIOLA_TENSOR(1,1) = PIOLA_TENSOR(1,1) + &
+          & B(1,1)*E(2,2)*E(3,3) + B(2,2)*(1.0_DP + E(2,2))*E(3,3) + B(3,3)*E(2,2)*(1.0_DP + E(3,3))
+        PIOLA_TENSOR(2,2) = PIOLA_TENSOR(2,2) + &
+          & B(1,1)*(1.0_DP + E(1,1))*E(3,3) + B(2,2)*E(1,1)*E(3,3) + B(3,3)*E(1,1)*(1.0_DP + E(3,3))
+        PIOLA_TENSOR(3,3) = PIOLA_TENSOR(3,3) + &
+          & B(1,1)*(1.0_DP + E(1,1))*E(2,2) + B(2,2)*E(1,1)*(1.0_DP + E(2,2)) + B(3,3)*E(1,1)*E(2,2)
+      CASE(6)
+        ! b1 E11^2(1+E22^2)(1+E33^2) + b2 E22^2(1+E11^2)(1+E33^2) + b3 E33^2(1+E11^2)(1+E22^2)
+        PIOLA_TENSOR(1,1) = PIOLA_TENSOR(1,1) + 2.0_DP*E(1,1)*( &
+          & B(1,1)*(1.0_DP+E(2,2)**2)*(1.0_DP+E(3,3)**2) + B(2,2)*(E(2,2)**2)*(1.0_DP+E(3,3)**2) + &
+          & B(3,3)*(1.0_DP+E(2,2)**2)*(E(3,3)**2))
+        PIOLA_TENSOR(2,2) = PIOLA_TENSOR(2,2) + 2.0_DP*E(2,2)*( &
+          & B(1,1)*(E(1,1)**2)*(1.0_DP+E(3,3)**2) + B(2,2)*(1.0_DP+E(1,1)**2)*(1.0_DP+E(3,3)**2) + &
+          & B(3,3)*(1.0_DP+E(1,1)**2)*(E(3,3)**2))
+        PIOLA_TENSOR(3,3) = PIOLA_TENSOR(3,3) + 2.0_DP*E(3,3)*( &
+          & B(1,1)*(E(1,1)**2)*(1.0_DP+E(2,2)**2) + B(2,2)*(1.0_DP+E(1,1)**2)*(E(2,2)**2) + &
+          & B(3,3)*(1.0_DP+E(1,1)**2)*(1.0_DP+E(2,2)**2))
+      CASE(7)
+        ! (J - 1 - ln(J)) (K + b1 C11^2 + b2 (C22^2 + C33^2))
+        PIOLA_TENSOR = PIOLA_TENSOR + &
+          & (1.0_DP - (1.0_DP/Jznu))*Jznu*AZU*( &
+          & C(6) + B(1,1)*(AZL(1,1)**2) + B(2,2)*(AZL(2,2)**2 + AZL(3,3)**2)) + &
+          & (Jznu - 1.0_DP - log(Jznu))*4.0_DP*B*AZL
+      CASE(8)
+        ! (J - 1)^2 (K + b1 C11^2 + b2 (C22^2 + C33^2))
+        PIOLA_TENSOR = PIOLA_TENSOR + &
+          & 2.0_DP*(Jznu - 1.0_DP)*Jznu*AZU*( &
+          & C(6) + B(1,1)*(AZL(1,1)**2) + B(2,2)*(AZL(2,2)**2 + AZL(3,3)**2)) + &
+          & ((Jznu - 1.0_DP)**2)*4.0_DP*B*AZL
+      CASE(9)
+        !No strain energy function to match this
+        PIOLA_TENSOR(1,1) = PIOLA_TENSOR(1,1) + B(1,1)*(AZL(2,2)*AZL(3,3)-1.0_DP)
+        PIOLA_TENSOR(2,2) = PIOLA_TENSOR(2,2) + B(2,2)*(AZL(1,1)*AZL(3,3)-1.0_DP)
+        PIOLA_TENSOR(3,3) = PIOLA_TENSOR(3,3) + B(3,3)*(AZL(1,1)*AZL(2,2)-1.0_DP)
+      CASE(10)
+        ! Psi^bulk = b23 (C22*C33 - 1)^2 + b13 (C11*C33 - 1)^2 + b12 (C11*C22 - 1)^2
+        ! case 26 in Python script
+        ! b23 = B(1,1), b13 = B(2,2), b12 = B(3,3)
+        DO i=1,3
+          TEMPTERM=2.0_DP*B(i,i)*(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i) - 1.0_DP)
+          DO j=1,3
+            IF(j/=i) THEN
+              k=1+2+3-i-j
+              !2.0 multilier due to converting from C derivatives to E
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*AZL(k,k)
+            END IF
+          END DO
+        END DO
+      CASE(11)
+        ! Psi^bulk = b23 (C22*C33 - (1 / C11))^2 + b13 (C11*C33 - (1 / C22))^2 + b12 (C11*C22 - (1 / C33))^2
+        ! case 29 in Python script
+        ! b23 = B(1,1), b13 = B(2,2), b12 = B(3,3)
+        DO i=1,3
+          TEMPTERM=2.0_DP*B(i,i)*(AZL(1,1)*AZL(2,2)*AZL(3,3) - 1.0_DP)/AZL(i,i)
+          DO j=1,3
+            IF(j==i) THEN
+              !2.0 multilier due to converting from C derivatives to E
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*(AZL(i,i)**(-2.0_DP))
+            ELSE
+              k=1+2+3-i-j
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*AZL(k,k)
+            END IF
+          END DO
+        END DO
+      CASE(12)
+        ! Psi^bulk = b1 f(k1(C22*C33 - (1 / C11))) + b2 f(k2(C11*C33 - (1 / C22))) + b3 f(k3(C11*C22 - (1 / C33)))
+        ! where f(x) = exp(x) - x - 1
+        ! b1 = B(1,1), b2 = B(2,2), b3 = B(3,3)
+        ! k1 = B(1,2), k2 = B(1,3), k3 = B(2,3)
+        KP(1)=B(1,2)
+        KP(2)=B(1,3)
+        KP(3)=B(2,3)
+        DO i=1,3
+          TEMPTERM=B(i,i)*KP(i)*(EXP(KP(i)*(AZL(1,1)*AZL(2,2)*AZL(3,3) - 1.0_DP)/AZL(i,i))-1.0_DP)
+          DO j=1,3
+            IF(j==i) THEN
+              !2.0 multilier due to converting from C derivatives to E
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*(AZL(i,i)**(-2.0_DP))
+            ELSE
+              k=1+2+3-i-j
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*AZL(k,k)
+            END IF
+          END DO
+        END DO
+      CASE(13)
+        ! Psi^bulk = b1 (C11 - 1 / (C22*C33))^2 + b2 (C22 - 1 / (C11*C33))^2 + b3 (C33 - 1 / (C11*C22))^2
+        ! case44 in Python tests
+        DO i=1,3
+          TEMPTERM=2.0_DP*B(i,i)*(AZL(i,i) - AZL(i,i)/(AZL(1,1)*AZL(2,2)*AZL(3,3)))
+          DO j=1,3
+            IF(j==i) THEN
+              !2.0 multilier due to converting from C derivatives to E
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM
+            ELSE
+              k=1+2+3-i-j
+              PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*(AZL(k,k)**(-1.0_DP))*(AZL(j,j)**(-2.0_DP))
+            END IF
+          END DO
+        END DO
+      END SELECT
+
+      ! Pressure effect:
+      !=================
+
+      SELECT CASE(1)
       CASE(1)
         !Standard effective stress formulation:
         PIOLA_TENSOR=PIOLA_TENSOR-DARCY_DEPENDENT_INTERPOLATED_POINT%VALUES(1,NO_PART_DERIV)*Jznu*AZU
