@@ -2583,7 +2583,7 @@ CONTAINS
       ! K_v = C(7)
       ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
 
-      SELECT CASE(1)
+      SELECT CASE(2)
       CASE(1) ! Guccione
         TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
             & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
@@ -2620,6 +2620,8 @@ CONTAINS
         TEMPTERM=Jznu**(-2.0_DP/3.0_DP) * I1
         PIOLA_TENSOR=C(1)*C(2)*EXP(C(2)*(TEMPTERM-3.0_DP))* &
           & (Jznu**(-2.0_DP/3.0_DP))*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU)
+      CASE(4)
+        ! Separate Guccione
       END SELECT
 
       B(1,:) = [C(8), C(9), C(10)]
@@ -2627,7 +2629,7 @@ CONTAINS
       B(3,:) = [C(10), C(12), C(13)]
 
       !Add bulk-modulus term
-      SELECT CASE(13)
+      SELECT CASE(14)
       CASE(1)
         ! Standard K(J - 1 - ln(J)) term
         PIOLA_TENSOR=PIOLA_TENSOR+C(6)*(Jznu - 1.0_DP)*AZU
@@ -2748,6 +2750,48 @@ CONTAINS
               PIOLA_TENSOR(j,j)=PIOLA_TENSOR(j,j) + 2.0_DP*TEMPTERM*(AZL(k,k)**(-1.0_DP))*(AZL(j,j)**(-2.0_DP))
             END IF
           END DO
+        END DO
+      CASE(14)
+        ! Psi^bulk = b1 ((C22*C33)*(J - 1))^2 + b2 ((C11*C33)*(J - 1))^2 + b3 ((C11*C22)*(J - 1))^2
+        ! case87 in Python tests
+        !
+        ! b1 (f1 * g)^2 + b2 ...
+        ! f1 = C22*C33, g = J - 1
+        DO i=1,3
+          TEMPTERM=2.0_DP*B(i,i)*(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*(Jznu-1.0_DP)
+          !calculate TEMP=dfdC
+          TEMP=0.0_DP
+          DO j=1,3
+            IF(j/=i) THEN
+              TEMP(j,j)=TEMP(j,j)+AZL(j,j)
+            END IF
+          END DO
+          !TEMP=dfdC*g + f*dgdC
+          TEMP=TEMP*(Jznu-1.0_DP)+(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*0.5_DP*Jznu*AZU
+          PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*TEMPTERM*TEMP
+        END DO
+      CASE(15)
+        ! Psi^bulk = b1 expe(k1*(C22*C33)*(J - 1)) + b2 expe(k2*(C11*C33)*(J - 1)) + b3 expe(k3*(C11*C22)*(J - 1))
+        ! expe(x) = e^x - x - 1
+        ! case90 in Python tests
+        !
+        ! b1 expe(k1 * f1 * g) + b2 ...
+        ! f1 = C22*C33, g = J - 1
+        KP(1)=B(1,2)
+        KP(2)=B(1,3)
+        KP(3)=B(2,3)
+        DO i=1,3
+          TEMPTERM=B(i,i)*(EXP(KP(i)*(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*(Jznu-1.0_DP))-1.0_DP)
+          !calculate TEMP=dfdC
+          TEMP=0.0_DP
+          DO j=1,3
+            IF(j/=i) THEN
+              TEMP(j,j)=TEMP(j,j)+AZL(j,j)
+            END IF
+          END DO
+          !TEMP=k[i] * (dfdC*g + f*dgdC)
+          TEMP=KP(i)*(TEMP*(Jznu-1.0_DP)+(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*0.5_DP*Jznu*AZU)
+          PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*TEMPTERM*TEMP
         END DO
       END SELECT
 
