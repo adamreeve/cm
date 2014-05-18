@@ -2583,7 +2583,7 @@ CONTAINS
       ! K_v = C(7)
       ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
 
-      SELECT CASE(2)
+      SELECT CASE(1)
       CASE(1) ! Guccione
         TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
             & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
@@ -2621,7 +2621,38 @@ CONTAINS
         PIOLA_TENSOR=C(1)*C(2)*EXP(C(2)*(TEMPTERM-3.0_DP))* &
           & (Jznu**(-2.0_DP/3.0_DP))*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU)
       CASE(4)
+        ! Guccione: Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
         ! Separate Guccione
+        ! W_hyp = c1/2 (e^(2b1(E11+E22+E33)) - 1)
+        !         + c11/2 (e^(b11 E11^2) - 1) + c22/2 (e^(b22 E22^2) - 1) + c33/2 (e^(b33 E33^2) - 1)
+        !         + c23/2 (e^(b23 (0.5(E23 + E32))^2) - 1)
+        !         + c12/2 (e^(b12 (0.5(E12 + E21))^2) - 1)
+        !         + c13/2 (e^(b13 (0.5(E13 + E23))^2) - 1)
+        ! Where b22 = b33 = b23 and b12 = b13, so:
+        ! W_hyp = c1/2 (e^(2b1(E11+E22+E33)) - 1)
+        !         + c2/2 (e^(b2 E11^2) - 1) + c3/2 (e^(b3 E22^2) - 1) + c3/2 (e^(b3 E33^2) - 1)
+        !         + c3/2 (e^(b3 (0.5(E23 + E32))^2) - 1)
+        !         + c4/2 (e^(b4 (0.5(E12 + E21))^2) - 1)
+        !         + c4/2 (e^(b4 (0.5(E13 + E31))^2) - 1)
+        ! Set all C parameters = C1, have to add more parameters otherwise...
+        ! b1=c2, b2=c3 etc
+        ! Add (c1/2)*(e^2b1(E11+E22+E33)-1) based terms
+        PIOLA_TENSOR=C(1)*C(2)*EXP(2.0_DP*C(2)*(E(1,1)+E(2,2)+E(3,3)))*IDENTITY
+        ! Add E11, E22, E33 terms
+        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+C(1)*EXP(C(3)*E(1,1)**2)*C(3)*E(1,1)
+        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+C(1)*EXP(C(4)*E(2,2)**2)*C(4)*E(2,2)
+        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+C(1)*EXP(C(4)*E(3,3)**2)*C(4)*E(3,3)
+        ! Add E23 terms
+        TEMPTERM=0.5_DP*C(1)*EXP(C(4)*(0.5_DP*(E(2,3)+E(3,2)))**2)*C(4)*(E(2,3)+E(3,2))
+        PIOLA_TENSOR(2,3)=PIOLA_TENSOR(2,3)+TEMPTERM
+        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(3,2)+TEMPTERM
+        ! Add E12, E13 terms
+        TEMPTERM=0.5_DP*C(1)*EXP(C(5)*(0.5_DP*(E(1,2)+E(2,1)))**2)*C(5)*(E(1,2)+E(2,1))
+        PIOLA_TENSOR(1,2)=PIOLA_TENSOR(1,2)+TEMPTERM
+        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(2,1)+TEMPTERM
+        TEMPTERM=0.5_DP*C(1)*EXP(C(5)*(0.5_DP*(E(1,3)+E(3,1)))**2)*C(5)*(E(1,3)+E(3,1))
+        PIOLA_TENSOR(1,3)=PIOLA_TENSOR(1,3)+TEMPTERM
+        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(3,1)+TEMPTERM
       END SELECT
 
       B(1,:) = [C(8), C(9), C(10)]
