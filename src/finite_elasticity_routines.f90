@@ -2660,7 +2660,7 @@ CONTAINS
       B(3,:) = [C(10), C(12), C(13)]
 
       !Add bulk-modulus term
-      SELECT CASE(14)
+      SELECT CASE(16)
       CASE(1)
         ! Standard K(J - 1 - ln(J)) term
         PIOLA_TENSOR=PIOLA_TENSOR+C(6)*(Jznu - 1.0_DP)*AZU
@@ -2823,6 +2823,18 @@ CONTAINS
           !TEMP=k[i] * (dfdC*g + f*dgdC)
           TEMP=KP(i)*(TEMP*(Jznu-1.0_DP)+(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*0.5_DP*Jznu*AZU)
           PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*TEMPTERM*TEMP
+        END DO
+      CASE(16)
+        ! Psi^bulk = K (J' - 1)^2
+        ! J' = (1 + 2 b1 E11) * (1 + 2 b2 E22) * (1 + 2 b3 E33)
+        ! case45 in Python tests
+        TEMPTERM=1.0_DP
+        DO i=1,3
+          TEMPTERM=TEMPTERM*(1.0_DP + 2.0_DP * B(i,i) * E(i,i))
+        END DO
+        DO i=1,3
+          PIOLA_TENSOR(i,i)=PIOLA_TENSOR(i,i)+2.0_DP*C(6)*(TEMPTERM-1.0_DP)*( &
+            & 2.0_DP*B(i,i)*TEMPTERM/(1.0_DP + 2.0_DP * B(i,i) * E(i,i)))
         END DO
       END SELECT
 
