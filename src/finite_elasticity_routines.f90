@@ -2302,7 +2302,7 @@ CONTAINS
     TYPE(VARYING_STRING), INTENT(OUT) :: ERROR !<The error string
     !Local Variables
     INTEGER(INTG) :: EQUATIONS_SET_SUBTYPE !<The equation subtype
-    INTEGER(INTG) :: i,j,k,PRESSURE_COMPONENT,dof_idx
+    INTEGER(INTG) :: i,j,k,PRESSURE_COMPONENT,dof_idx,CR_SUBTYPE
     REAL(DP) :: AZL(3,3),AZU(3,3),DZDNUT(3,3),PIOLA_TENSOR(3,3),E(3,3),P,IDENTITY(3,3)
     REAL(DP) :: DZDNUI(3,3),DZDNUIT(3,3)
     REAL(DP) :: I1,I2,I3,J1,J2,added_fluid_vol    !Invariants, if needed
@@ -2583,7 +2583,18 @@ CONTAINS
       ! K_v = C(7)
       ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
 
-      SELECT CASE(1)
+      IF(ABS(C(7)-1.0_DP)<1.0E-10) THEN
+        CR_SUBTYPE=1
+      ELSE IF(ABS(C(7)-2.0_DP)<1.0E-10) THEN
+        CR_SUBTYPE=2
+      ELSE IF(ABS(C(7)-3.0_DP)<1.0E-10) THEN
+        CR_SUBTYPE=3
+      ELSE IF(ABS(C(7)-4.0_DP)<1.0E-10) THEN
+        CR_SUBTYPE=4
+      ELSE
+        CR_SUBTYPE=1
+      END IF
+      SELECT CASE(CR_SUBTYPE)
       CASE(1) ! Guccione
         TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
             & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
@@ -2660,7 +2671,7 @@ CONTAINS
       B(3,:) = [C(10), C(12), C(13)]
 
       !Add bulk-modulus term
-      SELECT CASE(16)
+      SELECT CASE(14)
       CASE(1)
         ! Standard K(J - 1 - ln(J)) term
         PIOLA_TENSOR=PIOLA_TENSOR+C(6)*(Jznu - 1.0_DP)*AZU
@@ -2836,6 +2847,22 @@ CONTAINS
           PIOLA_TENSOR(i,i)=PIOLA_TENSOR(i,i)+2.0_DP*C(6)*(TEMPTERM-1.0_DP)*( &
             & 2.0_DP*B(i,i)*TEMPTERM/(1.0_DP + 2.0_DP * B(i,i) * E(i,i)))
         END DO
+      CASE(17)
+        ! Psi^bulk = K (J' J - 1)^2
+        ! J' = (1 + 2 b1 E11) * (1 + 2 b2 E22) * (1 + 2 b3 E33)
+        ! case91 in Python
+        ! calculate TEMPTERM=Jd
+        TEMPTERM=1.0_DP
+        DO i=1,3
+          TEMPTERM=TEMPTERM*(1.0_DP + 2.0_DP * B(i,i) * E(i,i))
+        END DO
+        ! calculate TEMP=dJd/dC
+        TEMP=0.0_DP
+        DO i=1,3
+          TEMP(i,i)=2.0_DP*B(i,i)*TEMPTERM / (1.0_DP + 2.0_DP * B(i,i) * E(i,i))
+        END DO
+        !2*K*(Jd * J - 1.0) * (dJd_dE * J + Jd * J * Cinv)
+        PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(6)*(TEMPTERM*Jznu-1.0_DP)*(Jznu*TEMP+TEMPTERM*Jznu*AZU)
       END SELECT
 
       ! Pressure effect:
