@@ -637,6 +637,8 @@ MODULE FIELD_ROUTINES
 
   PUBLIC FIELD_DOF_ORDER_TYPE_CHECK,FIELD_DOF_ORDER_TYPE_GET,FIELD_DOF_ORDER_TYPE_SET,FIELD_DOF_ORDER_TYPE_SET_AND_LOCK
 
+  PUBLIC Field_FibreAngleTypeSet
+
   PUBLIC FIELD_GEOMETRIC_FIELD_GET,FIELD_GEOMETRIC_FIELD_SET,FIELD_GEOMETRIC_FIELD_SET_AND_LOCK
 
   PUBLIC Field_GeometricParametersElementLineLengthGet
@@ -5326,6 +5328,46 @@ CONTAINS
   !================================================================================================================================
   !
 
+  !>Set the type of fibre angles for a fibre field
+  SUBROUTINE Field_FibreAngleTypeSet(field,fibreAngleType,err,error,*)
+
+    !Argument variables
+    TYPE(FIELD_TYPE), POINTER, INTENT(INOUT) :: field !<A pointer to the fibre field to set the angle type of
+    INTEGER(INTG), INTENT(IN) :: fibreAngleType !<The fibre angle type to set
+    INTEGER(INTG), INTENT(OUT) :: err !<The error code
+    TYPE(VARYING_STRING), INTENT(OUT) :: error !<The error string
+
+    CALL Enters("Field_FibreAngleTypeSet",err,error,*999)
+
+    IF(ASSOCIATED(field)) THEN
+      IF(field%type==FIELD_FIBRE_TYPE) THEN
+        SELECT CASE(fibreAngleType)
+        CASE(COORDINATE_FIBRE_ANGLES_XI_BASED, &
+            & COORDINATE_FIBRE_ANGLES_GLOBAL_BASED)
+          field%fibreAngleType=fibreAngleType
+        CASE DEFAULT
+          CALL FlagError("Invalid fibre angle type of "// &
+            & TRIM(NumberToVstring(fibreAngleType,"*",err,error))// &
+            & ".",err,error,*999)
+        END SELECT
+      ELSE
+        CALL FlagError("The field is not a fibre field.",err,error,*999)
+      END IF
+    ELSE
+      CALL FlagError("Fibre field is not associated.",err,error,*999)
+    END IF
+
+    CALL Exits("Field_FibreAngleTypeSet")
+    RETURN
+999 CALL Errors("Field_FibreAngleTypeSet",err,error)
+    CALL Exits("Field_FibreAngleTypeSet")
+    RETURN 1
+  END SUBROUTINE Field_FibreAngleTypeSet
+
+  !
+  !================================================================================================================================
+  !
+
   !>Initialises a field
   SUBROUTINE FIELD_INITIALISE(FIELD,ERR,ERROR,*)
 
@@ -5362,6 +5404,7 @@ CONTAINS
       DO variable_type_idx=1,FIELD_NUMBER_OF_VARIABLE_TYPES
         NULLIFY(FIELD%VARIABLE_TYPE_MAP(variable_type_idx)%PTR)
       ENDDO !variable_type_idx
+      FIELD%fibreAngleType=COORDINATE_FIBRE_ANGLES_XI_BASED
     ENDIF
 
     CALL EXITS("FIELD_INITIALISE")
