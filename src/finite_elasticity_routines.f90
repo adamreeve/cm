@@ -2498,11 +2498,19 @@ CONTAINS
       I1=AZL(1,1)+AZL(2,2)+AZL(3,3)
       TEMPTERM=C(1)*EXP(C(2)*(I1-3.0_DP))
 
-      PIOLA_TENSOR(1,1)=TEMPTERM+2.0_DP*C(3)*(AZL(1,1)-1.0_DP)*EXP(C(5)*(AZL(1,1)-1.0_DP)**2.0_DP)
+      PIOLA_TENSOR(1,1)=TEMPTERM
+      IF(AZL(1,1)>1.0_DP) THEN
+      !IF(.TRUE.) THEN
+        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+2.0_DP*C(3)*(AZL(1,1)-1.0_DP)*EXP(C(5)*(AZL(1,1)-1.0_DP)**2.0_DP)
+      END IF
       PIOLA_TENSOR(1,2)=C(7)*AZL(1,2)*EXP(C(8)*AZL(1,2)**2.0_DP)
       PIOLA_TENSOR(1,3)=0.0_DP
       PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
-      PIOLA_TENSOR(2,2)=TEMPTERM+2.0_DP*C(4)*(AZL(2,2)-1.0_DP)*EXP(C(6)*(AZL(2,2)-1.0_DP)**2.0_DP)
+      PIOLA_TENSOR(2,2)=TEMPTERM
+      !IF(.TRUE.) THEN
+      IF(AZL(2,2)>1.0_DP) THEN
+        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ 2.0_DP*C(4)*(AZL(2,2)-1.0_DP)*EXP(C(6)*(AZL(2,2)-1.0_DP)**2.0_DP)
+      END IF
       PIOLA_TENSOR(2,3)=0.0_DP
       PIOLA_TENSOR(3,1)=PIOLA_TENSOR(1,3)
       PIOLA_TENSOR(3,2)=PIOLA_TENSOR(2,3)
@@ -2632,11 +2640,12 @@ CONTAINS
       ! c4 = C(4)
       ! c5 = C(5)
       ! K = C(6)
-      ! K_v = C(7)
+      ! K_v = C(7) (Now used to select type of bulk strain energy)
       ! B(11, 12, 13, 22, 23, 33) = C(8 to 13)
+      ! type_switch = C(14)
 
-      SELECT CASE(1)
-      CASE(1) ! Guccione
+      SELECT CASE(INT(C(14)))
+      CASE(0) ! Guccione
         TEMPTERM=C(1)*EXP(2.0*C(2)*(E(1,1)+E(2,2)+E(3,3))+C(3)*E(1,1)**2+ &
             & C(4)*(E(2,2)**2+E(3,3)**2+2.0_DP*E(2,3)**2)+ &
             & C(5)*2.0_DP*(E(1,2)**2+E(1,3)**2))
@@ -2654,17 +2663,17 @@ CONTAINS
         p0=C(1)*C(2)
         PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
 
-      CASE(2) ! Separated exponential
-        !W_hyp(E) = c1 e^(c2 E11) + c1 e^(c2 E22) + c1 e^(c2 E33)
+      CASE(1) ! Separated exponential
+        !W_hyp(E) = 0.5 * [c1 e^(2 c2 E11) + c1 e^(2 c2 E22) + c1 e^(2 c2 E33)]
         PIOLA_TENSOR=0.0_DP
-        PIOLA_TENSOR(1,1)=C(1)*C(2)*EXP(C(2)*E(1,1))
-        PIOLA_TENSOR(2,2)=C(1)*C(2)*EXP(C(2)*E(2,2))
-        PIOLA_TENSOR(3,3)=C(1)*C(2)*EXP(C(2)*E(3,3))
+        PIOLA_TENSOR(1,1)=C(1)*C(2)*EXP(2.0_DP*C(2)*E(1,1))
+        PIOLA_TENSOR(2,2)=C(1)*C(2)*EXP(2.0_DP*C(2)*E(2,2))
+        PIOLA_TENSOR(3,3)=C(1)*C(2)*EXP(2.0_DP*C(2)*E(3,3))
 
         !Account for non-zero hydrostatic pressure offset:
         p0=C(1)*C(2)
         PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
-      CASE(3) ! Exponential in modified first invariant
+      CASE(2) ! Exponential in modified first invariant
         !W_hyp(E) = c1 (e^(c2(J1 - 3)) - 1)
         !J1=J^(-2/3) I1
         !dJ1/dC = J^(-2/3) * (I - (1/3) I1 C^-T)
@@ -2672,39 +2681,72 @@ CONTAINS
         TEMPTERM=Jznu**(-2.0_DP/3.0_DP) * I1
         PIOLA_TENSOR=C(1)*C(2)*EXP(C(2)*(TEMPTERM-3.0_DP))* &
           & (Jznu**(-2.0_DP/3.0_DP))*(IDENTITY-(1.0_DP/3.0_DP)*I1*AZU)
-      CASE(4)
-        ! Guccione: Q=2c2(E11+E22+E33)+c3(E11^2)+c4(E22^2+E33^2+E23^2+E32^2)+c5(E12^2+E21^2+E31^2+E13^2)
-        ! Separate Guccione
-        ! W_hyp = c1/2 (e^(2b1(E11+E22+E33)) - 1)
-        !         + c11/2 (e^(b11 E11^2) - 1) + c22/2 (e^(b22 E22^2) - 1) + c33/2 (e^(b33 E33^2) - 1)
-        !         + c23/2 (e^(b23 (0.5(E23 + E32))^2) - 1)
-        !         + c12/2 (e^(b12 (0.5(E12 + E21))^2) - 1)
-        !         + c13/2 (e^(b13 (0.5(E13 + E23))^2) - 1)
-        ! Where b22 = b33 = b23 and b12 = b13, so:
-        ! W_hyp = c1/2 (e^(2b1(E11+E22+E33)) - 1)
-        !         + c2/2 (e^(b2 E11^2) - 1) + c3/2 (e^(b3 E22^2) - 1) + c3/2 (e^(b3 E33^2) - 1)
-        !         + c3/2 (e^(b3 (0.5(E23 + E32))^2) - 1)
-        !         + c4/2 (e^(b4 (0.5(E12 + E21))^2) - 1)
-        !         + c4/2 (e^(b4 (0.5(E13 + E31))^2) - 1)
-        ! Set all C parameters = C1, have to add more parameters otherwise...
-        ! b1=c2, b2=c3 etc
+      CASE(3) ! Separated Guccione
+        ! Standard guccione: W = c1/2 (e^Q - 1)
+        !   Q = 2c2(E11+E22+E33) + c3(E11^2) + c4(E22^2+E33^2+E23^2+E32^2) + c5(E12^2+E21^2+E31^2+E13^2)
+        ! Separated Guccione:
+        ! W_hyp = c1/2 (e^(2c2(E11+E22+E33)) - 1)
+        !       + c1/2 (e^(c3 E11^2) - 1)
+        !       + c1/2 (e^(c4 E22^2) - 1)
+        !       + c1/2 (e^(c4 E33^2) - 1)
+        !       + c1/2 (e^(c4 (E23^2 + E32^2)) - 1)
+        !       + c1/2 (e^(c5 (E12^2 + E21^2)) - 1)
+        !       + c1/2 (e^(c5 (E13^2 + E31^2)) - 1)
         ! Add (c1/2)*(e^2b1(E11+E22+E33)-1) based terms
         PIOLA_TENSOR=C(1)*C(2)*EXP(2.0_DP*C(2)*(E(1,1)+E(2,2)+E(3,3)))*IDENTITY
         ! Add E11, E22, E33 terms
-        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+C(1)*EXP(C(3)*E(1,1)**2)*C(3)*E(1,1)
-        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+C(1)*EXP(C(4)*E(2,2)**2)*C(4)*E(2,2)
-        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+C(1)*EXP(C(4)*E(3,3)**2)*C(4)*E(3,3)
+        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+C(1)*C(3)*E(1,1)*EXP(C(3)*E(1,1)**2)
+        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+C(1)*C(4)*E(2,2)*EXP(C(4)*E(2,2)**2)
+        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+C(1)*C(4)*E(3,3)*EXP(C(4)*E(3,3)**2)
         ! Add E23 terms
-        TEMPTERM=0.5_DP*C(1)*EXP(C(4)*(0.5_DP*(E(2,3)+E(3,2)))**2)*C(4)*(E(2,3)+E(3,2))
-        PIOLA_TENSOR(2,3)=PIOLA_TENSOR(2,3)+TEMPTERM
-        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(3,2)+TEMPTERM
+        TEMPTERM=C(1)*C(4)*EXP(C(4)*(E(2,3)**2+E(3,2)**2))
+        PIOLA_TENSOR(2,3)=PIOLA_TENSOR(2,3)+E(2,3)*TEMPTERM
+        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(3,2)+E(3,2)*TEMPTERM
         ! Add E12, E13 terms
-        TEMPTERM=0.5_DP*C(1)*EXP(C(5)*(0.5_DP*(E(1,2)+E(2,1)))**2)*C(5)*(E(1,2)+E(2,1))
-        PIOLA_TENSOR(1,2)=PIOLA_TENSOR(1,2)+TEMPTERM
-        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(2,1)+TEMPTERM
-        TEMPTERM=0.5_DP*C(1)*EXP(C(5)*(0.5_DP*(E(1,3)+E(3,1)))**2)*C(5)*(E(1,3)+E(3,1))
-        PIOLA_TENSOR(1,3)=PIOLA_TENSOR(1,3)+TEMPTERM
-        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(3,1)+TEMPTERM
+        TEMPTERM=C(1)*C(5)*EXP(C(5)*(E(1,2)**2+E(2,1)**2))
+        PIOLA_TENSOR(1,2)=PIOLA_TENSOR(1,2)+E(1,2)*TEMPTERM
+        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(2,1)+E(2,1)*TEMPTERM
+        TEMPTERM=C(1)*C(5)*EXP(C(5)*(E(1,3)**2+E(3,1)**2))
+        PIOLA_TENSOR(1,3)=PIOLA_TENSOR(1,3)+E(1,3)*TEMPTERM
+        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(3,1)+E(3,1)*TEMPTERM
+
+        p0=C(1)*C(2)
+        PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
+      CASE(4) ! Fully separated Guccione
+        ! Standard guccione: W = c1/2 (e^Q - 1)
+        !   Q = 2c2(E11+E22+E33) + c3(E11^2) + c4(E22^2+E33^2+E23^2+E32^2) + c5(E12^2+E21^2+E31^2+E13^2)
+        ! Separated Guccione:
+        ! W_hyp = c1/2 (e^(2c2 E11) - 1)
+        !       + c1/2 (e^(2c2 E22) - 1)
+        !       + c1/2 (e^(2c2 E33) - 1)
+        !       + c1/2 (e^(c3 E11^2) - 1)
+        !       + c1/2 (e^(c4 E22^2) - 1)
+        !       + c1/2 (e^(c4 E33^2) - 1)
+        !       + c1/2 (e^(c4 (E23^2 + E32^2)) - 1)
+        !       + c1/2 (e^(c5 (E12^2 + E21^2)) - 1)
+        !       + c1/2 (e^(c5 (E13^2 + E31^2)) - 1)
+        PIOLA_TENSOR=0.0_DP
+        PIOLA_TENSOR(1,1) = C(1)*C(2)*EXP(2.0_DP*C(2)*E(1,1))
+        PIOLA_TENSOR(2,2) = C(1)*C(2)*EXP(2.0_DP*C(2)*E(2,2))
+        PIOLA_TENSOR(3,3) = C(1)*C(2)*EXP(2.0_DP*C(2)*E(3,3))
+        ! Add E11, E22, E33 terms
+        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+C(1)*C(3)*E(1,1)*EXP(C(3)*E(1,1)**2)
+        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+C(1)*C(4)*E(2,2)*EXP(C(4)*E(2,2)**2)
+        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+C(1)*C(4)*E(3,3)*EXP(C(4)*E(3,3)**2)
+        ! Add E23 terms
+        TEMPTERM=C(1)*C(4)*EXP(C(4)*(E(2,3)**2+E(3,2)**2))
+        PIOLA_TENSOR(2,3)=PIOLA_TENSOR(2,3)+E(2,3)*TEMPTERM
+        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(3,2)+E(3,2)*TEMPTERM
+        ! Add E12, E13 terms
+        TEMPTERM=C(1)*C(5)*EXP(C(5)*(E(1,2)**2+E(2,1)**2))
+        PIOLA_TENSOR(1,2)=PIOLA_TENSOR(1,2)+E(1,2)*TEMPTERM
+        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(2,1)+E(2,1)*TEMPTERM
+        TEMPTERM=C(1)*C(5)*EXP(C(5)*(E(1,3)**2+E(3,1)**2))
+        PIOLA_TENSOR(1,3)=PIOLA_TENSOR(1,3)+E(1,3)*TEMPTERM
+        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(3,1)+E(3,1)*TEMPTERM
+
+        p0=C(1)*C(2)
+        PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
       END SELECT
 
       B(1,:) = [C(8), C(9), C(10)]
@@ -5610,7 +5652,7 @@ CONTAINS
                 NUMBER_OF_COMPONENTS = 17
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
-                NUMBER_OF_COMPONENTS = 13
+                NUMBER_OF_COMPONENTS = 14
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_EXP_SQ_ORTHO_SUBTYPE)
                 NUMBER_OF_COMPONENTS = 9
