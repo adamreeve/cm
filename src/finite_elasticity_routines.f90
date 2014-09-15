@@ -2624,14 +2624,12 @@ CONTAINS
 
       PIOLA_TENSOR(1,1)=TEMPTERM
       IF(AZL(1,1)>1.0_DP) THEN
-      !IF(.TRUE.) THEN
         PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+2.0_DP*C(3)*(AZL(1,1)-1.0_DP)*EXP(C(5)*(AZL(1,1)-1.0_DP)**2.0_DP)
       END IF
       PIOLA_TENSOR(1,2)=C(7)*AZL(1,2)*EXP(C(8)*AZL(1,2)**2.0_DP)
       PIOLA_TENSOR(1,3)=0.0_DP
       PIOLA_TENSOR(2,1)=PIOLA_TENSOR(1,2)
       PIOLA_TENSOR(2,2)=TEMPTERM
-      !IF(.TRUE.) THEN
       IF(AZL(2,2)>1.0_DP) THEN
         PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+ 2.0_DP*C(4)*(AZL(2,2)-1.0_DP)*EXP(C(6)*(AZL(2,2)-1.0_DP)**2.0_DP)
       END IF
@@ -2649,10 +2647,13 @@ CONTAINS
       B(3,:) = [C(14), C(16), C(17)]
 
       !Add bulk-modulus term
-      SELECT CASE(14)
+      SELECT CASE(10)
       CASE(1)
         ! Standard K(J - 1 - ln(J)) term
         PIOLA_TENSOR=PIOLA_TENSOR+C(9)*(Jznu - 1.0_DP)*AZU
+      CASE(10)
+        ! K(J - 1)^2
+        PIOLA_TENSOR=PIOLA_TENSOR+C(9)*2.0_DP*(Jznu - 1.0_DP)*Jznu*AZU
       CASE(14)
         ! Psi^bulk = b1 ((C22*C33)*(J - 1))^2 + b2 ((C11*C33)*(J - 1))^2 + b3 ((C11*C22)*(J - 1))^2
         ! case87 in Python tests
@@ -2871,6 +2872,38 @@ CONTAINS
 
         p0=C(1)*C(2)
         PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
+      CASE(5)
+        ! Standard guccione: W = c1/2 (e^Q - 1)
+        !   Q = 2c2(E11+E22+E33) + c3(E11^2) + c4(E22^2+E33^2+E23^2+E32^2) + c5(E12^2+E21^2+E31^2+E13^2)
+        ! Separated Guccione with extra c1 type parameters:
+        ! W_hyp = c1/2 (e^(2c2(E11+E22+E33)) - 1)
+        !       + c6/2 (e^(c3 E11^2) - 1)
+        !       + c7/2 (e^(c4 E22^2) - 1)
+        !       + c7/2 (e^(c4 E33^2) - 1)
+        !       + c7/2 (e^(c4 (E23^2 + E32^2)) - 1)
+        !       + c8/2 (e^(c5 (E12^2 + E21^2)) - 1)
+        !       + c8/2 (e^(c5 (E13^2 + E31^2)) - 1)
+        ! c6,c7,c8 = C(15)..C(17)
+        ! Add (c1/2)*(e^2b1(E11+E22+E33)-1) based terms
+        PIOLA_TENSOR=C(1)*C(2)*EXP(2.0_DP*C(2)*(E(1,1)+E(2,2)+E(3,3)))*IDENTITY
+        ! Add E11, E22, E33 terms
+        PIOLA_TENSOR(1,1)=PIOLA_TENSOR(1,1)+C(15)*C(3)*E(1,1)*EXP(C(3)*E(1,1)**2)
+        PIOLA_TENSOR(2,2)=PIOLA_TENSOR(2,2)+C(16)*C(4)*E(2,2)*EXP(C(4)*E(2,2)**2)
+        PIOLA_TENSOR(3,3)=PIOLA_TENSOR(3,3)+C(16)*C(4)*E(3,3)*EXP(C(4)*E(3,3)**2)
+        ! Add E23 terms
+        TEMPTERM=C(16)*C(4)*EXP(C(4)*(E(2,3)**2+E(3,2)**2))
+        PIOLA_TENSOR(2,3)=PIOLA_TENSOR(2,3)+E(2,3)*TEMPTERM
+        PIOLA_TENSOR(3,2)=PIOLA_TENSOR(3,2)+E(3,2)*TEMPTERM
+        ! Add E12, E13 terms
+        TEMPTERM=C(17)*C(5)*EXP(C(5)*(E(1,2)**2+E(2,1)**2))
+        PIOLA_TENSOR(1,2)=PIOLA_TENSOR(1,2)+E(1,2)*TEMPTERM
+        PIOLA_TENSOR(2,1)=PIOLA_TENSOR(2,1)+E(2,1)*TEMPTERM
+        TEMPTERM=C(17)*C(5)*EXP(C(5)*(E(1,3)**2+E(3,1)**2))
+        PIOLA_TENSOR(1,3)=PIOLA_TENSOR(1,3)+E(1,3)*TEMPTERM
+        PIOLA_TENSOR(3,1)=PIOLA_TENSOR(3,1)+E(3,1)*TEMPTERM
+
+        p0=C(1)*C(2)
+        PIOLA_TENSOR=PIOLA_TENSOR-p0*Jznu*AZU
       END SELECT
 
       B(1,:) = [C(8), C(9), C(10)]
@@ -2879,6 +2912,8 @@ CONTAINS
 
       IF(ABS(C(7)-26.0_DP)<1.0E-6) THEN
         CR_SUBTYPE=26
+      ELSE IF(ABS(C(7)-10.0_DP)<1.0E-6) THEN
+        CR_SUBTYPE=10
       ELSE IF(ABS(C(7)-29.0_DP)<1.0E-6) THEN
         CR_SUBTYPE=29
       ELSE IF(ABS(C(7)-44.0_DP)<1.0E-6) THEN
@@ -2895,6 +2930,12 @@ CONTAINS
         CR_SUBTYPE=95
       ELSE IF(ABS(C(7)-96.0_DP)<1.0E-6) THEN
         CR_SUBTYPE=96
+      ELSE IF(ABS(C(7)-100.0_DP)<1.0E-6) THEN
+        CR_SUBTYPE=100
+      ELSE IF(ABS(C(7)-102.0_DP)<1.0E-6) THEN
+        CR_SUBTYPE=102
+      ELSE IF(ABS(C(7)-103.0_DP)<1.0E-6) THEN
+        CR_SUBTYPE=103
       ELSE
         CR_SUBTYPE=1
       END IF
@@ -2957,6 +2998,9 @@ CONTAINS
         PIOLA_TENSOR(1,1) = PIOLA_TENSOR(1,1) + B(1,1)*(AZL(2,2)*AZL(3,3)-1.0_DP)
         PIOLA_TENSOR(2,2) = PIOLA_TENSOR(2,2) + B(2,2)*(AZL(1,1)*AZL(3,3)-1.0_DP)
         PIOLA_TENSOR(3,3) = PIOLA_TENSOR(3,3) + B(3,3)*(AZL(1,1)*AZL(2,2)-1.0_DP)
+      CASE(10)
+        ! K(J - 1)^2
+        PIOLA_TENSOR=PIOLA_TENSOR+C(6)*2.0_DP*(Jznu - 1.0_DP)*Jznu*AZU
       CASE(26)
         ! Psi^bulk = b23 (C22*C33 - 1)^2 + b13 (C11*C33 - 1)^2 + b12 (C11*C22 - 1)^2
         ! case 26 in Python script
@@ -3028,17 +3072,21 @@ CONTAINS
         !
         ! b1 (f1 * g)^2 + b2 ...
         ! f1 = C22*C33, g = J - 1
+        ! loop over each term
         DO i=1,3
+          !tempterm = 2.0 * b * (f * g)
           TEMPTERM=2.0_DP*B(i,i)*(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*(Jznu-1.0_DP)
           !calculate TEMP=dfdC
           TEMP=0.0_DP
           DO j=1,3
             IF(j/=i) THEN
-              TEMP(j,j)=TEMP(j,j)+AZL(j,j)
+              k=1+2+3-i-j
+              TEMP(j,j)=AZL(k,k)
             END IF
           END DO
-          !TEMP=dfdC*g + f*dgdC
-          TEMP=TEMP*(Jznu-1.0_DP)+(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*0.5_DP*Jznu*AZU
+          !TEMP=g*dfdC + f*dgdC
+          TEMP=(Jznu-1.0_DP)*TEMP+(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*0.5_DP*Jznu*AZU
+          !PK2 = dPsi/dE = dC/dE * (2.0 * b * (f * g) * (g*df/dC + f*dg/dC))
           PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*TEMPTERM*TEMP
         END DO
       CASE(90)
@@ -3112,6 +3160,60 @@ CONTAINS
           ! 2.0 for dC/dE
           PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*TEMPTERM*TEMP
         END DO
+      CASE(100)
+        ! Psi^bulk = ((K + b1 C22 C33 + b2 C11 C33 + b3 C11 C22) (J - 1))^2
+        ! Psi^bulk = (f (J - 1))^2
+        ! tempterm = f
+        ! TEMP = df/dC
+        TEMPTERM=C(6)
+        TEMP=0.0_DP
+        DO i=1,3
+          DO j=1,3
+            IF(j/=i) EXIT
+          END DO
+          DO k=j+1,3
+            IF(k/=i) EXIT
+          END DO
+          TEMPTERM=TEMPTERM+B(i,i)*AZL(j,j)*AZL(k,k)
+          TEMP(i,i)=B(j,j)*AZL(k,k)+B(k,k)*AZL(j,j)
+        END DO
+        PIOLA_TENSOR=PIOLA_TENSOR+4.0_DP*TEMPTERM*(Jznu-1.0_DP)*(TEMPTERM*0.5_DP*Jznu*AZU+TEMP*(Jznu-1.0_DP))
+      CASE(102)
+        ! Psi^bulk = Iso J squared term + case 87
+        ! (J - 1)^2:
+        PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*C(6)*(Jznu - 1.0_DP)*Jznu*AZU
+        ! Case 87:
+        ! Psi^bulk = b1 ((C22*C33)*(J - 1))^2 + b2 ((C11*C33)*(J - 1))^2 + b3 ((C11*C22)*(J - 1))^2
+        ! case87 in Python tests
+        !
+        ! b1 (f1 * g)^2 + b2 ...
+        ! f1 = C22*C33, g = J - 1
+        DO i=1,3
+          TEMPTERM=2.0_DP*B(i,i)*(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*(Jznu-1.0_DP)
+          !calculate TEMP=dfdC
+          TEMP=0.0_DP
+          DO j=1,3
+            IF(j/=i) THEN
+              k=1+2+3-i-j
+              TEMP(j,j)=AZL(k,k)
+            END IF
+          END DO
+          !TEMP=dfdC*g + f*dgdC
+          TEMP=TEMP*(Jznu-1.0_DP)+(AZL(1,1)*AZL(2,2)*AZL(3,3)/AZL(i,i))*0.5_DP*Jznu*AZU
+          PIOLA_TENSOR=PIOLA_TENSOR+2.0_DP*TEMPTERM*TEMP
+        END DO
+      CASE(103)
+        ! Psi^bulk = ((K + b1 C11 + b2 C22 + b3 C33) (J - 1))^2
+        ! Psi^bulk = (f * (J - 1))^2
+        ! tempterm = f, temp = dfdC
+        TEMPTERM=C(6)
+        TEMP=0.0_DP
+        DO i=1,3
+          TEMPTERM=TEMPTERM+B(i,i)*AZL(i,i)
+          TEMP(i,i)=B(i,i)
+        END DO
+        ! dPsi/dE = 2.0 * dPsi/dC = 2.0 * (2.0 * f * (J - 1) * (dfdC * (J - 1) + f * dJdC))
+        PIOLA_TENSOR=PIOLA_TENSOR+4.0_DP*TEMPTERM*(Jznu-1.0_DP)*((Jznu-1.0_DP)*TEMP+TEMPTERM*0.5_DP*Jznu*AZU)
       END SELECT
 
       ! Pressure effect:
@@ -5776,7 +5878,7 @@ CONTAINS
                 NUMBER_OF_COMPONENTS = 17
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_GUCCIONE_SUBTYPE)
-                NUMBER_OF_COMPONENTS = 14
+                NUMBER_OF_COMPONENTS = 17
                 NUMBER_OF_FLUID_COMPONENTS=8
               CASE(EQUATIONS_SET_ELASTICITY_FLUID_PRESSURE_EXP_SQ_ORTHO_SUBTYPE)
                 NUMBER_OF_COMPONENTS = 9
